@@ -2,14 +2,15 @@ import streamlit as st
 from openai import OpenAI
 from openai import OpenAIError
 
-import fitz  # PyMuPDF
-
+import PyPDF2
 
 def read_pdf(uploaded_file):
-    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
-        text = ""
-        for page in doc:
-            text += page.get_text()
+    pdf_reader = PyPDF2.PdfReader(uploaded_file)
+    num_pages = len(pdf_reader.pages)
+    text = ""
+    for page_num in range(num_pages):
+        page = pdf_reader.pages[page_num]
+        text += page.extract_text()
     return text
 
 
