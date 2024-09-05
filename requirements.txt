@@ -1,5 +1,4 @@
 openai
 PyPDF2
-fitz>=1.19.0
 frontend
 tools
