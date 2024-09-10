@@ -1,12 +1,13 @@
 import streamlit as st
 from hw01 import hw01 
-from hw02 import hw02  
+from hw02 import hw02 
 
-st.title("HomeWork Manager")
+st.title("My Homework Assignments")
 
-pg = st.navigation([
-    st.Page(hw01, title="HW 1"),
-    st.Page(hw02, title="HW 2")
-], position="sidebar")
+with st.sidebar:
+    selected_page = st.radio("Select a page", ["HW 1", "HW 2"])
 
-pg.run()
+if selected_page == "HW 1":
+    hw01()
+elif selected_page == "HW 2":
+    hw02()
