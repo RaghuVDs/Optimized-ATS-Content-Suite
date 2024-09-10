@@ -4,17 +4,17 @@ from openai import OpenAIError
 
 import PyPDF2
 
+
+def read_pdf(uploaded_file):
+    pdf_reader = PyPDF2.PdfReader(uploaded_file)
+    num_pages = len(pdf_reader.pages)
+    text = ""
+    for page_num in range(num_pages):
+        page = pdf_reader.pages[page_num]
+        text += page.extract_text()
+    return text
+
 def hw01():
-        def read_pdf(uploaded_file):
-            pdf_reader = PyPDF2.PdfReader(uploaded_file)
-            num_pages = len(pdf_reader.pages)
-            text = ""
-            for page_num in range(num_pages):
-                page = pdf_reader.pages[page_num]
-                text += page.extract_text()
-            return text
-
-
         st.set_page_config(layout="wide")
 
         st.markdown(
