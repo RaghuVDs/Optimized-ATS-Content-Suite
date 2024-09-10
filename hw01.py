@@ -15,8 +15,6 @@ def read_pdf(uploaded_file):
     return text
 
 def hw01():
-        st.set_page_config(layout="wide")
-
         st.markdown(
             "<h1 style='text-align: center;'>📄 Document Question Answering</h1>",
             unsafe_allow_html=True,
