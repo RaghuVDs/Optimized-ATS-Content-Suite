@@ -44,23 +44,41 @@ def lab2():
     try:
         client = OpenAI(api_key=openai_api_key)
 
-        # Sidebar with summary options and model choice
+        # Sidebar with summary options, model choice, and language selection
         with st.sidebar:
             st.subheader("Summary Options")
             summary_option = st.radio(
                 "Choose summary type:",
                 ("100 words", "2 paragraphs", "5 bullet points")
             )
-            use_advanced_model = st.checkbox("Use Advanced Model (gpt-4)")
-            model_name = "gpt-4" if use_advanced_model else "gpt-4-0314"
+            use_advanced_model = st.checkbox("Use Advanced Model (gpt-4o)")
+            model_name = "gpt-4o" if use_advanced_model else "gpt-4o-mini"
+
+            st.subheader("Language")
+            output_language = st.selectbox(
+                "Select output language:",
+                ("English", "French", "Spanish", "Hindi", "Kannada")
+            )
+
+        # Initialize session state variables if they don't exist
+        if 'input_method' not in st.session_state:
+            st.session_state['input_method'] = None
 
         # URL input at the top
-        url = st.text_input("Enter a URL or upload a document below:")
+        if st.session_state['input_method'] != 'file':
+            url = st.text_input("Enter a URL or upload a document below:")
+            if url:
+                st.session_state['input_method'] = 'url'
+        else:
+            url = None
 
-        if not url:  # Only show file uploader if URL is empty
+        # File uploader - conditionally displayed based on URL input
+        if st.session_state['input_method'] != 'url':
             uploaded_file = st.file_uploader(
                 "Upload a Document (.txt, .md, or .pdf)", type=("txt", "md", "pdf")
             )
+            if uploaded_file:
+                st.session_state['input_method'] = 'file'
         else:
             uploaded_file = None
 
@@ -88,13 +106,13 @@ def lab2():
                 st.exception(e)
                 return
 
-            # Construct prompt based on selected summary option
+            # Construct prompt based on selected summary option and language
             if summary_option == "100 words":
-                prompt = f"Summarize the following document in 100 words:\n\n{document}"
+                prompt = f"Summarize the following document in 100 words in {output_language}:\n\n{document}"
             elif summary_option == "2 paragraphs":
-                prompt = f"Summarize the following document in 2 connecting paragraphs:\n\n{document}"
+                prompt = f"Summarize the following document in 2 connecting paragraphs in {output_language}:\n\n{document}"
             else:  # 5 bullet points
-                prompt = f"Summarize the following document in 5 bullet points:\n\n{document}"
+                prompt = f"Summarize the following document in 5 bullet points in {output_language}:\n\n{document}"
 
             # Generate summary
             try:
@@ -106,30 +124,13 @@ def lab2():
                         ]
                     )
 
-                # Display the summary only if it's generated
-                if response.choices[0].message.content:
+                # Display the summary only if it contains actual summary content
+                if response.choices[0].message.content and not response.choices[0].message.content.startswith("The document didn't provide"):
                     st.subheader("Summary")
                     st.write(response.choices[0].message.content)
+
             except Exception as e:
                 st.exception(e) 
 
     except AuthenticationError:
         st.error("Invalid OpenAI API key. Please check your key and try again.")
-
-# Main Streamlit app (assuming you have lab1 defined elsewhere)
-
-# Set page configuration as the first Streamlit command
-st.set_page_config(page_title="My Homework Assignments", page_icon=":book:", layout="wide")
-
-# Add a title to the page
-st.title("My Homework Assignments")
-
-# Updated navigation command for newer Streamlit versions
-with st.sidebar:
-    selected_page = st.radio("Select a page", ["Lab 1", "Lab 2"])
-
-# Display the selected page
-if selected_page == "Lab 1":
-    lab1()
-elif selected_page == "Lab 2":
-    lab2()
