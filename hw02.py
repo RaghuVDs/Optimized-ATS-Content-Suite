@@ -2,29 +2,6 @@ import streamlit as st
 from openai import OpenAI
 from openai import AuthenticationError
 import PyPDF2
-import requests
-from bs4 import BeautifulSoup
-
-def read_pdf(uploaded_file):
-    pdf_reader = PyPDF2.PdfReader(uploaded_file)
-    num_pages = len(pdf_reader.pages)
-    text = ""
-    for page_num in range(num_pages):
-        page = pdf_reader.pages[page_num]
-        text += page.extract_text()
-    return text
-
-
-def read_url_content(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status() 
-        soup = BeautifulSoup(response.content, 'html.parser')
-        return soup.get_text()
-
-    except requests.RequestException as e:
-        print(f"Error reading {url}: {e}")
-        return None
 
 def lab2():
         
@@ -41,7 +18,7 @@ def lab2():
             unsafe_allow_html=True,
         )
 
-        # API key handling
+
         openai_api_key = st.secrets["api_key"]
         if not openai_api_key:
             st.error("OpenAI API key not found in secrets.")
@@ -58,30 +35,31 @@ def lab2():
                     ("100 words", "2 paragraphs", "5 bullet points")
                 )
                 use_advanced_model = st.checkbox("Use Advanced Model (gpt-4)")
-                model_name = "gpt-4" if use_advanced_model else "gpt-4-0314"
-
-            # URL input at the top
-            url = st.text_input("Enter a URL or upload a document below:")
+                model_name = "gpt-4" if use_advanced_model else "gpt-4o-mini"
 
             # File uploader
             uploaded_file = st.file_uploader(
-                "Upload a Document (.txt, .md, or .pdf)", type=("txt", "md", "pdf")
+                "Upload a Document (.txt or .md or .pdf)", type=("txt", "md", "pdf")
             )
 
-            if st.button("Generate Summary") and (url or uploaded_file):
-                # Process the input (URL or file)
+            if uploaded_file and st.button("Generate Summary"):
+                # Process the file
                 try:
-                    if url:
-                        document = read_url_content(url)
-                        if document is None:
-                            st.error("Error fetching content from the URL. Please check the URL and try again.")
-                            return
-                    elif uploaded_file:
-                        if uploaded_file.type == "application/pdf":
-                            document = read_pdf(uploaded_file)
-                        else: 
-                            document = uploaded_file.read().decode("utf-8") 
+                    if uploaded_file.type == "application/pdf":
+                        # Define read_pdf function within lab2
+                        def read_pdf(uploaded_file):
+                            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+                            num_pages = len(pdf_reader.pages)
+                            text = ""
+                            for page_num in range(num_pages):
+                                page = pdf_reader.pages[page_num]
+                                text += page.extract_text()
+                            return text
 
+
+                        document = read_pdf(uploaded_file)
+                    else: 
+                        document = uploaded_file.read().decode("utf-8") 
                 except UnicodeDecodeError:
                     try:
                         document = uploaded_file.read().decode("latin-1")
