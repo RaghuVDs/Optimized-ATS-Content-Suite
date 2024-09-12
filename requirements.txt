@@ -3,3 +3,4 @@ PyPDF2
 frontend
 tools
 bs4
+google.generativeai
