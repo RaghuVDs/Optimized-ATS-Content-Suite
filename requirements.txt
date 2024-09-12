@@ -4,3 +4,4 @@ frontend
 tools
 bs4
 google.generativeai
+anthropic
