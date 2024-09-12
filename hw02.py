@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 import os
+from anthropic import Anthropic
 
 def read_pdf(uploaded_file):
     pdf_reader = PyPDF2.PdfReader(uploaded_file)
@@ -49,9 +50,18 @@ def lab2():
         st.error("Google API key not found in secrets.")
         st.stop()
 
+    # API key handling for Anthropic
+    anthropic_api_key = st.secrets["ANTHROPIC_API_KEY"]
+    if not anthropic_api_key:
+        st.error("Anthropic API key not found in secrets.")
+        st.stop()
+
     try:
         # Initialize OpenAI client
         client = OpenAI(api_key=openai_api_key)
+
+        # Initialize Anthropic client
+        anthropic_client = Anthropic(api_key=anthropic_api_key)
 
         # Sidebar with summary options, model choice, and language selection
         with st.sidebar:
@@ -62,10 +72,10 @@ def lab2():
             )
 
             st.subheader("Model")
-            # Dropdown for LLM selection, including Google Gemini
-            llm_option = st.selectbox(
-                "Select LLM:",
-                ("gpt-4o", "gpt-4o-mini","gemini-1.5-flash")
+            # Dropdown for LLM provider selection
+            llm_provider = st.selectbox(
+                "Select LLM Provider:",
+                ("OpenAI", "Google Gemini", "Anthropic")
             )
 
             st.subheader("Language")
@@ -134,36 +144,72 @@ def lab2():
             else:  # 5 bullet points
                 prompt = f"Summarize the following document in 5 bullet points in {output_language}:\n\n{document}"
 
-            # Generate summary using the selected LLM
+            # Generate summaries using both lower and higher-tier models for the selected provider
             try:
-                with st.spinner("Generating summary..."):
-                    if llm_option.startswith("gpt"):  # OpenAI models
-                        response = llm_mapping[llm_option].chat.completions.create(
-                            model=llm_option,
+                with st.spinner("Generating summaries..."):
+                    if llm_provider == "OpenAI":
+                        lower_model = "gpt-4o-mini"
+                        higher_model = "gpt-4o"
+
+                        response_lower = client.chat.completions.create(
+                            model=lower_model,
                             messages=[
                                 {"role": "user", "content": prompt}
                             ]
                         )
-                        summary = response.choices[0].message.content
-                    elif llm_option == "gemini-1.5-flash":  # Google Gemini
-                        # Configure Google Generative AI (within the try block, if needed)
+                        summary_lower = response_lower.choices[0].message.content
+
+                        response_higher = client.chat.completions.create(
+                            model=higher_model,
+                            messages=[
+                                {"role": "user", "content": prompt}
+                            ]
+                        )
+                        summary_higher = response_higher.choices[0].message.content
+
+                    elif llm_provider == "Google Gemini":
+                        lower_model = "gemini-1.5-flash" 
+                        higher_model = "gemini-1.5-pro"
+
+                        # Configure Google Generative AI
                         genai.configure(api_key=google_api_key)
 
-                        # Initialize the Google Gemini model
-                        google_model = genai.GenerativeModel(model_name=llm_option)
-                        response = google_model.generate_content(prompt)
-                        summary = response.text
-                    else:
-                        st.error(f"Unsupported LLM: {llm_option}")
-                        return
+                        google_model_lower = genai.GenerativeModel(model_name=lower_model)
+                        response_lower = google_model_lower.generate_content(prompt)
+                        summary_lower = response_lower.text
 
-                # Display the summary only if it's generated
-                if summary:
-                    st.subheader("Summary")
-                    st.write(summary)
+                        google_model_higher = genai.GenerativeModel(model_name=higher_model)
+                        response_higher = google_model_higher.generate_content(prompt)
+                        summary_higher = response_higher.text
+
+                    elif llm_provider == "Anthropic":
+                        lower_model = "Claude 3 Haiku" 
+                        higher_model = "Claude 3.5 Sonnet"
+
+                        response_lower = anthropic_client.completions.create(
+                            model=lower_model,
+                            prompt=prompt,
+                            max_tokens_to_sample=1024, 
+                        )
+                        summary_lower = response_lower.completion
+
+                        response_higher = anthropic_client.completions.create(
+                            model=higher_model,
+                            prompt=prompt,
+                            max_tokens_to_sample=1024, 
+                        )
+                        summary_higher = response_higher
+
+                        # Display the summaries only if they're generated
+                if summary_lower and summary_higher:
+                    st.subheader(f"Summary ({lower_model})")
+                    st.write(summary_lower)
+
+                    st.subheader(f"Summary ({higher_model})")
+                    st.write(summary_higher)
 
             except Exception as e:
-                st.exception(e) 
+                st.exception(e)
 
     except AuthenticationError:
         st.error("Invalid OpenAI API key. Please check your key and try again.")
