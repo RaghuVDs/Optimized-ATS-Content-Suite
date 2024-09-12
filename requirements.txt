@@ -2,3 +2,4 @@ openai
 PyPDF2
 frontend
 tools
+bs4
