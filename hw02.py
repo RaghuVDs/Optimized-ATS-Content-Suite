@@ -28,7 +28,6 @@ def read_url_content(url):
         return None
 
 def lab2():
-    # Title and description
     st.markdown(
         "<h1 style='text-align: center;'>📄 Document Question Answering</h1>",
         unsafe_allow_html=True,
@@ -63,7 +62,7 @@ def lab2():
         # Initialize Anthropic client
         anthropic_client = Anthropic(api_key=anthropic_api_key)
 
-        # Sidebar with summary options, model choice, and language selection
+        # Sidebar
         with st.sidebar:
             st.subheader("Summary Options")
             summary_option = st.radio(
@@ -72,7 +71,7 @@ def lab2():
             )
 
             st.subheader("Model")
-            # Dropdown for LLM provider selection
+            # Dropdown for LLM provider
             llm_provider = st.selectbox(
                 "Select LLM Provider:",
                 ("OpenAI", "Google Gemini", "Anthropic")
@@ -84,7 +83,7 @@ def lab2():
                 ("English", "French", "Spanish", "Hindi", "Kannada")
             )
 
-        # Map LLM options to their corresponding API clients/models
+        # Map LLM options
         llm_mapping = {
             "gpt-4o": client,
             "gpt-4o-mini": client
@@ -94,7 +93,7 @@ def lab2():
         if 'input_method' not in st.session_state:
             st.session_state['input_method'] = None
 
-        # URL input at the top
+        # URL input
         if st.session_state['input_method'] != 'file':
             url = st.text_input("Enter a URL or upload a document below:")
             if url:
@@ -102,7 +101,7 @@ def lab2():
         else:
             url = None
 
-        # File uploader - conditionally displayed based on URL input
+        # File uploader
         if st.session_state['input_method'] != 'url':
             uploaded_file = st.file_uploader(
                 "Upload a Document (.txt, .md, or .pdf)", type=("txt", "md", "pdf")
@@ -113,7 +112,6 @@ def lab2():
             uploaded_file = None
 
         if st.button("Generate Summary") and (url or uploaded_file):
-            # Process the input (URL or file)
             try:
                 if url:
                     document = read_url_content(url)
@@ -136,7 +134,7 @@ def lab2():
                 st.exception(e)
                 return
 
-            # Construct prompt based on selected summary option and language
+            # summary option and language
             if summary_option == "100 words":
                 prompt = f"Summarize the following document in 100 words in {output_language}:\n\n{document}"
             elif summary_option == "2 paragraphs":
@@ -200,7 +198,7 @@ def lab2():
                         )
                         summary_higher = response_higher
 
-                        # Display the summaries only if they're generated
+                        # Display the summaries
                 if summary_lower and summary_higher:
                     st.subheader(f"Summary ({lower_model})")
                     st.write(summary_lower)
