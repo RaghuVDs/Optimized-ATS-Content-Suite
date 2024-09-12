@@ -4,6 +4,8 @@ from openai import AuthenticationError
 import PyPDF2
 import requests
 from bs4 import BeautifulSoup
+import google.generativeai as genai
+import os
 
 def read_pdf(uploaded_file):
     pdf_reader = PyPDF2.PdfReader(uploaded_file)
@@ -35,13 +37,20 @@ def lab2():
         unsafe_allow_html=True,
     )
 
-    # API key handling
-    openai_api_key = st.secrets["api_key"]
+    # API key handling for OpenAI
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
     if not openai_api_key:
         st.error("OpenAI API key not found in secrets.")
         st.stop()
 
+    # API key handling for Google Gemini 
+    google_api_key = st.secrets["GOOGLE_API_KEY"]
+    if not google_api_key:
+        st.error("Google API key not found in secrets.")
+        st.stop()
+
     try:
+        # Initialize OpenAI client
         client = OpenAI(api_key=openai_api_key)
 
         # Sidebar with summary options, model choice, and language selection
@@ -51,14 +60,25 @@ def lab2():
                 "Choose summary type:",
                 ("100 words", "2 paragraphs", "5 bullet points")
             )
-            use_advanced_model = st.checkbox("Use Advanced Model (gpt-4o)")
-            model_name = "gpt-4o" if use_advanced_model else "gpt-4o-mini"
+
+            st.subheader("Model")
+            # Dropdown for LLM selection, including Google Gemini
+            llm_option = st.selectbox(
+                "Select LLM:",
+                ("gpt-4o", "gpt-4o-mini","gemini-1.5-flash")
+            )
 
             st.subheader("Language")
             output_language = st.selectbox(
                 "Select output language:",
                 ("English", "French", "Spanish", "Hindi", "Kannada")
             )
+
+        # Map LLM options to their corresponding API clients/models
+        llm_mapping = {
+            "gpt-4o": client,
+            "gpt-4o-mini": client
+        }
 
         # Initialize session state variables if they don't exist
         if 'input_method' not in st.session_state:
@@ -114,20 +134,33 @@ def lab2():
             else:  # 5 bullet points
                 prompt = f"Summarize the following document in 5 bullet points in {output_language}:\n\n{document}"
 
-            # Generate summary
+            # Generate summary using the selected LLM
             try:
                 with st.spinner("Generating summary..."):
-                    response = client.chat.completions.create(
-                        model=model_name,
-                        messages=[
-                            {"role": "user", "content": prompt}
-                        ]
-                    )
+                    if llm_option.startswith("gpt"):  # OpenAI models
+                        response = llm_mapping[llm_option].chat.completions.create(
+                            model=llm_option,
+                            messages=[
+                                {"role": "user", "content": prompt}
+                            ]
+                        )
+                        summary = response.choices[0].message.content
+                    elif llm_option == "gemini-1.5-flash":  # Google Gemini
+                        # Configure Google Generative AI (within the try block, if needed)
+                        genai.configure(api_key=google_api_key)
 
-                # Display the summary only if it contains actual summary content
-                if response.choices[0].message.content and not response.choices[0].message.content.startswith("The document didn't provide"):
+                        # Initialize the Google Gemini model
+                        google_model = genai.GenerativeModel(model_name=llm_option)
+                        response = google_model.generate_content(prompt)
+                        summary = response.text
+                    else:
+                        st.error(f"Unsupported LLM: {llm_option}")
+                        return
+
+                # Display the summary only if it's generated
+                if summary:
                     st.subheader("Summary")
-                    st.write(response.choices[0].message.content)
+                    st.write(summary)
 
             except Exception as e:
                 st.exception(e) 
