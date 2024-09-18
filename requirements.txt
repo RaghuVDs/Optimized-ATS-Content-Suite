@@ -5,3 +5,6 @@ tools
 bs4
 google.generativeai
 anthropic
+streamlit
+tiktoken
+uuid
