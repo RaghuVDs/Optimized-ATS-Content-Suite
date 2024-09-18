@@ -26,14 +26,19 @@ def lab3():
     try:
         client = OpenAI(api_key=openai_api_key)
 
-        # Sidebar with model choice
+        # Sidebar with model choice and URL inputs
         with st.sidebar:
             st.subheader("Model Options")
             use_advanced_model = st.checkbox("Use Advanced Model (gpt-4)")
-            model_name = "gpt-4o" if use_advanced_model else "gpt-4o-mini"
+            model_name = "gpt-4" if use_advanced_model else "gpt-3.5-turbo"
 
             # Initialize encoding after model_name is assigned
             encoding = encoding_for_model(model_name)
+
+            # URL input fields
+            st.subheader("URL Inputs (Optional)")
+            url1 = st.text_input("URL 1")
+            url2 = st.text_input("URL 2")
 
         # Display chat messages from history
         for message in st.session_state.messages:
@@ -60,8 +65,11 @@ def lab3():
                 conversation_buffer.insert(0, message)
                 total_tokens += message_tokens
 
-            # Add system message tokens
-            total_tokens += len(encoding.encode("You are a helpful AI assistant."))
+            # Add system message tokens and URL information (if provided)
+            system_message = "You are a helpful AI assistant."
+            if url1 or url2:
+                system_message += f" The user has provided these URLs for context: {url1}, {url2}."
+            total_tokens += len(encoding.encode(system_message))
 
             # Display token count information
             st.write(f"Total tokens used for this request: {total_tokens}")
@@ -70,7 +78,7 @@ def lab3():
 
             # Construct the full message history for context
             messages_for_request = [
-                {"role": "system", "content": "You are a helpful AI assistant."}
+                {"role": "system", "content": system_message}
             ] + conversation_buffer
 
             # Stream the response
@@ -88,60 +96,60 @@ def lab3():
 
             st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-        # Flag to control whether to ask for more information
-        ask_for_more_information = True
+            # Flag to control whether to ask for more information
+            ask_for_more_information = True
 
-        # Callback function to handle "Yes" button click 
-        def on_yes_click():
-            nonlocal ask_for_more_information 
-            st.session_state.messages.append({"role": "user", "content": "Can you give more information on that?"})
-            ask_for_more_information = True 
+            # Callback function to handle "Yes" button click
+            def on_yes_click():
+                nonlocal ask_for_more_information
+                st.session_state.messages.append({"role": "user", "content": "Can you give more information on that?"})
+                ask_for_more_information = True
 
-        # Callback function to handle "No" button click 
-        def on_no_click():
-            nonlocal ask_for_more_information
-            st.session_state.messages.append({"role": "assistant", "content": "What question can I help you with?"})
-            ask_for_more_information = False  # Exit the loop
+            # Callback function to handle "No" button click
+            def on_no_click():
+                nonlocal ask_for_more_information
+                st.session_state.messages.append({"role": "assistant", "content": "What question can I help you with?"})
+                ask_for_more_information = False  # Exit the loop
 
-        while ask_for_more_information:
+            while ask_for_more_information:
 
-            # Trigger another API call to get the elaboration
-            conversation_buffer = st.session_state.messages[-4:]
-            messages_for_request = [
-                {"role": "system", "content": "You are a helpful AI assistant."}
-            ] + conversation_buffer
+                # Trigger another API call to get the elaboration
+                conversation_buffer = st.session_state.messages[-4:]
+                messages_for_request = [
+                    {"role": "system", "content": system_message}
+                ] + conversation_buffer
 
-            # Stream the elaboration
-            response_container = st.empty()
-            full_response = ""
-            for chunk in client.chat.completions.create(
-                model=model_name,
-                messages=messages_for_request,
-                stream=True
-            ):
-                content = chunk.choices[0].delta.content or ""
-                full_response += content
-                response_container.markdown(full_response + "▌")
-            response_container.markdown(full_response)
+                # Stream the elaboration
+                response_container = st.empty()
+                full_response = ""
+                for chunk in client.chat.completions.create(
+                    model=model_name,
+                    messages=messages_for_request,
+                    stream=True
+                ):
+                    content = chunk.choices[0].delta.content or ""
+                    full_response += content
+                    response_container.markdown(full_response + "▌")
+                response_container.markdown(full_response)
 
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-            # Ask if the user wants more information
-            st.markdown("**Do you want more information?**")
-            col1, col2 = st.columns(2)
+                # Ask if the user wants more information
+                st.markdown("**Do you want more information?**")
+                col1, col2 = st.columns(2)
 
-            # Generate unique keys for the buttons
-            yes_button_key = str(uuid.uuid4())
-            no_button_key = str(uuid.uuid4())
+                # Generate unique keys for the buttons
+                yes_button_key = str(uuid.uuid4())
+                no_button_key = str(uuid.uuid4())
 
-            with col1:
-                st.button("Yes", on_click=on_yes_click, key=yes_button_key) 
+                with col1:
+                    st.button("Yes", on_click=on_yes_click, key=yes_button_key)
 
-            with col2:
-                if st.button("No", on_click=on_no_click, key=no_button_key):
-                    pass  # No need for additional logic here
+                with col2:
+                    if st.button("No", on_click=on_no_click, key=no_button_key):
+                        pass  # No need for additional logic here
 
-            ask_for_more_information = False  # Reset the flag at the end of the loop
+                ask_for_more_information = False  # Reset the flag at the end of the loop
 
     except AuthenticationError:
         st.error(
