@@ -15,7 +15,7 @@ def lab3():
     st.markdown("Ask me anything!")
 
     # API key handling with a more helpful error message
-    openai_api_key = st.secrets["api_key"]
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
     if not openai_api_key:
         st.error(
             "OpenAI API key not found in secrets. "
