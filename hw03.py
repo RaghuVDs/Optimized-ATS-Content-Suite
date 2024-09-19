@@ -7,7 +7,6 @@ import google.generativeai as genai
 import anthropic
 
 def lab3():
-
     # Initialize chat history if not present in session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -48,17 +47,17 @@ def lab3():
                 # OpenAI model selection
                 openai_models = ["gpt-4o", "gpt-4o-mini"]  # Add more OpenAI models as needed
                 model_name = st.selectbox("Select OpenAI Model", openai_models)
-                encoding = tiktoken.encoding_for_model(model_name)  # Explicitly get tokenizer for OpenAI
+                encoding = tiktoken.encoding_for_model(model_name)  # Get tokenizer for OpenAI
 
             elif selected_model == "Google Gemini":
                 gemini_models = ["gemini-1.5-flash", "gemini-1.5-pro"]  # Placeholder model names
                 model_name = st.selectbox("Select Gemini Model", gemini_models)
-                encoding = tiktoken.get_encoding("cl100k_base")  # Explicitly use cl100k_base for Gemini
+                encoding = tiktoken.get_encoding("cl100k_base")  # Use cl100k_base for Gemini
 
             elif selected_model == "Anthropic":
                 anthropic_models = ["Claude 3 Haiku", "Claude 3.5 Sonnet"]  # Placeholder model names
                 model_name = st.selectbox("Select Anthropic Model", anthropic_models)
-                encoding = tiktoken.get_encoding("cl100k_base")  # Explicitly use cl100k_base for Anthropic
+                encoding = tiktoken.get_encoding("cl100k_base")  # Use cl100k_base for Anthropic
 
             # URL input fields
             st.subheader("URLs (Optional)")
@@ -76,39 +75,32 @@ def lab3():
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # Calculate token count for the new prompt
-            if model_name:  # Only calculate if a model is selected
-                new_prompt_tokens = len(encoding.encode(prompt))
-
-            # Maintain a conversation buffer, limiting it to 'max_tokens'
-            max_tokens = 3000  # Adjust this as needed
-            conversation_buffer = []
-            total_tokens = 0
-            for message in reversed(st.session_state.messages):
-                if model_name:  # Only calculate if a model is selected
-                    message_tokens = len(encoding.encode(message["content"]))
-                else:
-                    message_tokens = 0  # Placeholder for other models
-                if total_tokens + message_tokens > max_tokens:
-                    break
-                conversation_buffer.insert(0, message)
-                total_tokens += message_tokens
+            # Define max tokens for LLM request
+            max_tokens = 4096  # Adjust this value as necessary for the model's token limit
 
             # Add system message tokens
-            total_tokens += len(encoding.encode("You are a helpful AI assistant."))
-
-            # Placeholder to potentially incorporate URLs into the system message
             system_message = "You are a helpful AI assistant. "
             if url1:
                 system_message += f"You have access to information from this webpage: {url1}. "
             if url2:
                 system_message += f"You also have access to information from this webpage: {url2}. "
-            total_tokens += len(encoding.encode(system_message))
+            total_tokens = len(encoding.encode(system_message))
 
-            # Display token count information
+            # Calculate token count for the new prompt
+            new_prompt_tokens = len(encoding.encode(prompt))
+            total_tokens += new_prompt_tokens
+
+            # Token-based buffer to maintain conversation history under max_tokens
+            conversation_buffer = []
+            for message in reversed(st.session_state.messages):
+                message_tokens = len(encoding.encode(message["content"]))
+                if total_tokens + message_tokens > max_tokens:
+                    break  # Stop if adding more messages exceeds the max token limit
+                conversation_buffer.insert(0, message)  # Add message in the right order
+                total_tokens += message_tokens
+
+            # Display total tokens used
             st.write(f"Total tokens used for this request: {total_tokens}")
-            if total_tokens > max_tokens:
-                st.warning(f"Conversation buffer truncated to fit within {max_tokens} tokens.")
 
             # Construct the full message history for context
             messages_for_request = [
