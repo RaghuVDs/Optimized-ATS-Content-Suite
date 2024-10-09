@@ -8,6 +8,3 @@ anthropic
 streamlit
 tiktoken
 uuid
-glob
-time
-pathlib
