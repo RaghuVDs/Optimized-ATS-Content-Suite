@@ -85,7 +85,7 @@ def initialize_session():
         st.session_state.initial_data_loaded = False
 
 def load_initial_pdfs():
-    data_dir = Path("./HWs/Data")
+    data_dir = Path("D:\\3rd Sem\\02.AI APP\\pdffolder")
     if not data_dir.exists():
         st.warning("Data directory not found. Creating it...")
         data_dir.mkdir(exist_ok=True)
