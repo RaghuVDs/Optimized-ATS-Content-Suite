@@ -5,9 +5,6 @@ from hw03 import lab3
 from hw05 import hw05
 
 
-
-
-
 with st.sidebar:
     selected_page = st.radio("Select a page", ["HW01", "HW02","HW03","HW05"])
 
