@@ -13,11 +13,12 @@ def load_api_key():
     return openai_api_key
 
 def load_data(uploaded_file):
-    """Load the news data from the uploaded CSV file."""
-    df = pd.read_csv(uploaded_file)
+    """Load the news data from the uploaded CSV file with a limit of 100 rows."""
+    df = pd.read_csv(uploaded_file, nrows=100)  # Load only the first 100 rows
     st.write("### Columns in the CSV:", df.columns.tolist()) 
     st.write("### Sample Data:", df.head())
     return df
+
 
 def load_embedding_model():
     """Load the sentence transformer model for embedding generation."""
