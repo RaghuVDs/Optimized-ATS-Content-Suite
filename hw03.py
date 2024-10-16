@@ -1,6 +1,5 @@
 import streamlit as st
-from openai import OpenAI
-from openai import AuthenticationError
+import openai
 import tiktoken
 import uuid
 import google.generativeai as genai

@@ -1,6 +1,6 @@
 import streamlit as st
-from openai import OpenAI
-from openai import AuthenticationError
+import openai
+import openai
 import PyPDF2
 import requests
 from bs4 import BeautifulSoup

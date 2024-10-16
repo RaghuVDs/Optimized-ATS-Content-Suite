@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
+import openai
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 
 def load_api_key():
     """Load OpenAI API key from secrets."""
@@ -13,12 +14,11 @@ def load_api_key():
     return openai_api_key
 
 def load_data(uploaded_file):
-    """Load the news data from the uploaded CSV file with a limit of 100 rows."""
-    df = pd.read_csv(uploaded_file, nrows=100)  # Load only the first 100 rows
-    st.write("### Columns in the CSV:", df.columns.tolist()) 
+    """Load the news data from the uploaded CSV file."""
+    df = pd.read_csv(uploaded_file)
+    st.write("### Columns in the CSV:", df.columns.tolist())
     st.write("### Sample Data:", df.head())
     return df
-
 
 def load_embedding_model():
     """Load the sentence transformer model for embedding generation."""
@@ -34,22 +34,21 @@ def generate_embeddings(df, model, document_col):
     for idx, doc in enumerate(df[document_col].fillna('').tolist()):
         embedding = model.encode(doc, convert_to_tensor=True)
         embeddings.append(embedding)
-
         # Update the progress bar
         progress.progress((idx + 1) / total_documents)
-    
+
     st.write("Embeddings generation complete.")
     return embeddings
 
-def get_most_interesting_news(df, client):
+def get_most_interesting_news(df):
     """Get the most interesting news stories using OpenAI API."""
     news_list = df['Document'].fillna('').values.tolist()
-    prompt = f"""Given the following news stories about recent global events and legal developments, rank them in order of relevance and importance to a large global law firm. Consider factors such as potential legal impact, client relevance, and emerging trends. Provide a brief explanation for each ranking.
+    prompt = f"""Given the following news stories about recent global events and legal developments, rank them in order of relevance and importance to a large global law firm. Consider factors such as potential legal impact, client relevance, and emerging trends.
 
     {news_list}
     """
-    
-    response = client.chat.completions.create(
+
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful and informative news analyst."},
@@ -58,24 +57,24 @@ def get_most_interesting_news(df, client):
     )
     return response.choices[0].message.content
 
-def get_news_by_topic(df, model, topic, client):
+def get_news_by_topic(df, model, topic):
     """Get news stories related to a specific topic."""
     topic_embedding = model.encode(topic, convert_to_tensor=True)
     news_embeddings = generate_embeddings(df, model, 'Document')
     similarities = cosine_similarity(topic_embedding.reshape(1, -1), news_embeddings)
-    
+
     # Getting top relevant news
     top_indices = similarities.argsort()[0][::-1]
     top_news = df.iloc[top_indices[:3]]
-    
+
     # Construct prompt for summarization
     top_news_list = top_news['Document'].fillna('').values.tolist()
     prompt = f"""From the provided news dataset, identify and summarize the top 3 most relevant news stories about {topic}. If no relevant stories are found, say 'No news found about {topic} in the dataset.'
 
     {top_news_list}
     """
-    
-    response = client.chat.completions.create(
+
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful and informative news analyst."},
@@ -87,10 +86,7 @@ def get_news_by_topic(df, model, topic, client):
 def hw06():
     """Main function to run the Streamlit app."""
     openai_api_key = load_api_key()
-    client = OpenAI(api_key=openai_api_key)
-
-    st.title("Upload Document to Know the News Report")
-
+    openai.api_key = openai_api_key  # Set the API key for the openai module
 
     # Streamlit file uploader
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
@@ -106,7 +102,7 @@ def hw06():
         if query_type == "Most interesting news":
             if st.button("Get most interesting news"):
                 try:
-                    result = get_most_interesting_news(df, client)
+                    result = get_most_interesting_news(df)
                     st.write(result)
                 except OpenAIError as e:
                     st.error(f"An error occurred: {e}")
@@ -118,7 +114,7 @@ def hw06():
                     st.warning("Please enter a topic to search.")
                 else:
                     try:
-                        result = get_news_by_topic(df, model, topic, client)
+                        result = get_news_by_topic(df, model, topic)
                         st.write(result)
                     except OpenAIError as e:
                         st.error(f"An error occurred: {e}")

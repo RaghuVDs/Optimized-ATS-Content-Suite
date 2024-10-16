@@ -1,7 +1,7 @@
 # hw01
 
 import streamlit as st
-from openai import OpenAI
+import openai
 from openai import OpenAIError
 
 import PyPDF2

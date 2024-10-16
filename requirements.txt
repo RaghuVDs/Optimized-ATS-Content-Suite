@@ -8,8 +8,3 @@ anthropic
 streamlit
 tiktoken
 uuid
-streamlit
-pandas
-sentence-transformers
-scikit-learn
-openai
