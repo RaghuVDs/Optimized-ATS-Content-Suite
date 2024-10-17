@@ -10,7 +10,7 @@ tiktoken
 uuid
 streamlit
 pandas
-openai
+pip install openai==0.28.0
 sentence-transformers
 scikit-learn
 numpy
