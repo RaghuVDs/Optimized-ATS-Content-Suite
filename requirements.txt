@@ -8,3 +8,9 @@ anthropic
 streamlit
 tiktoken
 uuid
+streamlit
+pandas
+openai
+sentence-transformers
+scikit-learn
+numpy
