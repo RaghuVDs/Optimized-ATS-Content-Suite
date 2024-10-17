@@ -20,7 +20,6 @@ def load_data(uploaded_file=None):
     if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
     else:
-        # Load the default CSV file
         default_file_path = "/workspaces/688-HW/Data/Example_news_info_for_testing.csv"
         if os.path.exists(default_file_path):
             df = pd.read_csv(default_file_path)
@@ -45,7 +44,7 @@ def generate_embeddings(df, model, document_col, limit=10):
     embeddings = []
     progress = st.progress(0)
     
-    # Limit the number of rows for testing
+    # Limitting the number of rows for testing
     df_limited = df.head(limit)
     total_documents = len(df_limited)
     st.write(f"Generating embeddings for {total_documents} documents...")
@@ -81,7 +80,7 @@ def get_most_interesting_news(df):
     """
 
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",  # You can experiment with other models
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful and informative news analyst."},
             {"role": "user", "content": prompt}
@@ -110,7 +109,7 @@ def get_news_by_topic(df, model, topic, similarity_threshold=0.6):
         """
 
         response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",  # You can experiment with other models
+            model="gpt-4o-mini",  
             messages=[
                 {"role": "system", "content": "You are a helpful and informative news analyst."},
                 {"role": "user", "content": prompt}
@@ -125,11 +124,10 @@ def hw06():
     openai_api_key = load_api_key()
     openai.api_key = openai_api_key
 
-    # Streamlit UI enhancements
     st.sidebar.title("News Analyzer")
 
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-    df = load_data(uploaded_file)  # Load data with the new function
+    df = load_data(uploaded_file)  
     model = load_embedding_model()
 
     st.title("News Reporting Bot for Law Firms")
