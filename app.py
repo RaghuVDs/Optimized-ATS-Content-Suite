@@ -5,7 +5,7 @@ from pdf_handler import read_pdf
 from llm_handler import generate_application_text, generate_tailored_resume
 import os
 
-def lab2():
+def job():
     st.markdown(
         "<h1 style='text-align: center;'>📧📄 Automated Job Application Text Generation</h1>",
         unsafe_allow_html=True,
@@ -125,4 +125,4 @@ def lab2():
                         st.error("Thank you for your feedback. We'll work on improving.")
 
 if __name__ == "__main__":
-    lab2()
+    job()
