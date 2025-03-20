@@ -2,7 +2,7 @@
 import streamlit as st
 from typing import Optional
 from pdf_handler import read_pdf
-from llm_handler import generate_application_text
+from llm_handler import generate_application_text, generate_tailored_resume
 import os
 
 def lab2():
@@ -11,7 +11,7 @@ def lab2():
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p style='text-align: center;'>Enter your details and the job description to generate an email or cover letter.</p>",
+        "<p style='text-align: center;'>Enter your details and the job description to generate an email, cover letter, or a tailored resume.</p>",
         unsafe_allow_html=True,
     )
 
@@ -69,13 +69,27 @@ def lab2():
             st.error("No default resume found. Please upload your resume.")
             return
 
+    # Option to generate tailored resume
+    generate_resume = st.checkbox("Generate a tailored resume based on the job description?")
+    tailored_resume_output: Optional[str] = None
+    if generate_resume and default_resume_content and job_description:
+        with st.spinner("Generating tailored resume..."):
+            tailored_resume_output = generate_tailored_resume(default_resume_content, job_description, google_api_key)
+        if tailored_resume_output:
+            st.subheader("Generated Tailored Resume:")
+            st.markdown(tailored_resume_output)
+            resume_content = tailored_resume_output # Use the generated resume for further steps
+        else:
+            st.error("Failed to generate tailored resume.")
+
     # Option to generate email or cover letter
+    st.subheader("Generate Application Text")
     generation_type = st.radio(
-        "Generate:",
+        "Choose to generate:",
         ("Email", "Cover Letter")
     )
 
-    if st.button("Generate"):
+    if st.button("Generate Application Text"):
         if not name:
             st.error("Please enter your name.")
         elif not email:
@@ -93,10 +107,22 @@ def lab2():
                     resume_content=resume_content,
                     generation_type=generation_type,
                     google_api_key=google_api_key,
-                    tone=tone,  # Pass the selected tone
+                    tone=tone,
                 )
                 st.subheader(f"Generated {generation_type} ({tone} Tone):")
                 st.markdown(output_text)
+
+                # Feedback section
+                st.subheader("Feedback")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("👍 Good"):
+                        print("Feedback: Positive")  # In a real app, store this feedback
+                        st.success("Thank you for your feedback!")
+                with col2:
+                    if st.button("👎 Bad"):
+                        print("Feedback: Negative")  # In a real app, store this feedback
+                        st.error("Thank you for your feedback. We'll work on improving.")
 
 if __name__ == "__main__":
     lab2()
