@@ -89,6 +89,13 @@ def job():
         ("Email", "Cover Letter")
     )
 
+    email_recipient_type: Optional[str] = None
+    if generation_type == "Email":
+        email_recipient_type = st.radio(
+            "Send email to:",
+            ("Talent Acquisition and Hiring Manager", "General Employer")
+        )
+
     if st.button("Generate Application Text"):
         if not name:
             st.error("Please enter your name.")
@@ -108,6 +115,7 @@ def job():
                     generation_type=generation_type,
                     google_api_key=google_api_key,
                     tone=tone,
+                    email_recipient_type=email_recipient_type # Pass the new parameter
                 )
                 st.subheader(f"Generated {generation_type} ({tone} Tone):")
                 st.markdown(output_text)
