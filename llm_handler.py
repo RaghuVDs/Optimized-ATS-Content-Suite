@@ -20,7 +20,7 @@ def generate_application_text(
 
     if generation_type == "Email":
         if email_recipient_type == "Talent Acquisition and Hiring Manager":
-            prompt = f"""You are an expert at writing highly effective job application emails tailored for both Talent Acquisition Specialists and Hiring Managers. Your goal is to create a compelling email that highlights the candidate's most relevant qualifications based on their resume and the job description, optimized for Applicant Tracking Systems (ATS).
+            prompt = f"""You are an expert at writing highly effective job application emails tailored for Talent Acquisition Specialists and Hiring Managers, following a specific format. Your goal is to create a compelling email that highlights the candidate's most relevant qualifications based on their resume and the job description, optimized for Applicant Tracking Systems (ATS).
 
 Candidate's Name: {name}
 Candidate's Email: {email}
@@ -32,19 +32,27 @@ Desired Tone: {tone}
 
 Instructions:
 
-Subject: Highly Qualified [Your Most Relevant Skill/Profession] for [Specific Job Title] - [Your Name]
+Format:
 
-Dear [Hiring Manager or Talent Acquisition Specialist Name],
+Subject: [Your Profession/Area of Expertise] for [Specific Job Title] Application - [Your Name]
 
-I am writing to express my enthusiastic interest in the [Specific Job Title] position at [Company Name], as advertised [mention where you saw the advertisement if applicable]. With my proven experience in [mention 2-3 most relevant skills or areas of expertise directly from your resume that align with the job description], I am confident I possess the qualifications to significantly contribute to your team.
+Dear (Research on LinkedIn) [Hiring Manager Name or Talent Acquisition Specialist Name],
 
-In my previous role as a [Your Previous Role] at [Your Previous Company], I [describe a specific, quantifiable achievement or responsibility from your resume that directly addresses a key requirement in the job description. Use action verbs and numbers whenever possible. For example, "Led a project that resulted in a X% increase in Y" or "Successfully implemented a solution that reduced Z cost by W%"]. This experience, coupled with my skills in [mention 2-3 other relevant skills from your resume, including technical skills like 'Azure Data Factory', 'PySpark', 'Tableau', etc.], makes me a strong fit for this opportunity.
+My name is {name}, and I am writing to express my strong interest in the [Specific Job Title] position ([mention where you saw the job posting if applicable]) at [Company Name]. [If you have a link to the job posting, include it here: Job posting can be found here: [Job Posting URL]]
+I am [mention your current status, e.g., an upcoming graduate from [University Name] (Master's in [Your Major], [Graduation Month, Year])] with over [mention number] years of experience specializing in [Your Profession/Area of Expertise].
 
-I am particularly drawn to [Company Name]'s work in [mention something specific about the company or the role that excites you, demonstrating you've done your research]. My experience in [mention another relevant skill or project from your resume, such as 'Data Pipeline and Analysis with Azure Data Factory' or 'Airfare Prediction and Optimization with PySpark'] aligns well with the requirements outlined in the job description, and I am eager to bring my expertise to your organization.
+I was particularly excited to see [mention a specific requirement or responsibility from the job description that excites you and aligns with your experience]. This aligns perfectly with my recent experience at [Your Previous Company], where [describe a specific, quantifiable achievement or responsibility from your resume that directly addresses the mentioned requirement. Use action verbs and numbers whenever possible. For example, "Designed and implemented a Delta Lake on Azure Data Lake Storage (ADLS Gen2), enabling ACID transactions, schema enforcement, and time-travel capabilities for 1TB+ daily Payments data."].
 
-Thank you for considering my application. My resume, attached for your convenience, provides further details on my qualifications. I am available for an interview at your earliest convenience.
+I believe my skills in [mention 2-3 key skills from your resume that are highly relevant to the job description, e.g., SQL, Python, Tableau] would be a strong fit for this role and your team's objectives.
+
+I've been following [Company Name]'s work in [mention something specific about the company or the role that excites you, demonstrating you've done your research, e.g., Tesla's commitment to improving manufacturing efficiency through data analysis] for some time, and I'm particularly impressed by [mention something specific you admire about the company].
+
+I would be grateful for the opportunity to discuss how my background and passion for [Your Profession/Area of Expertise] could contribute to your team's success. I've attached my resume for your consideration.
+
+Thank you for your time.
 
 Sincerely,
+
 {name}
 [Your Phone Number (if available in resume)]
 [Your LinkedIn Profile URL (if available in resume)]
@@ -57,10 +65,10 @@ Key Considerations for ATS Optimization:
 - Avoid complex formatting or graphics.
 - Use standard professional fonts (though this is less of a concern for email).
 
-Please ensure the email is professional, enthusiastic, and directly addresses the key requirements of the job description, highlighting the most relevant skills and achievements from the candidate's resume.
+Please ensure the email is professional, enthusiastic, and directly addresses the key requirements of the job description, highlighting the most relevant skills and achievements from the candidate's resume, following the provided format. Remember to instruct the user to replace '(Research on LinkedIn)' with the actual name if found.
 """
         elif email_recipient_type == "General Employer":
-            prompt = f"""You are an expert at writing compelling job application emails suitable for a broad range of employers. Your goal is to create a professional and engaging email based on the candidate's resume and the job description, optimized for Applicant Tracking Systems (ATS).
+            prompt = f"""You are an expert at writing compelling job application emails suitable for a broad range of employers, following a professional format. Your goal is to create an engaging email based on the candidate's resume and the job description, optimized for Applicant Tracking Systems (ATS).
 
 Candidate's Name: {name}
 Candidate's Email: {email}
@@ -72,19 +80,22 @@ Desired Tone: {tone}
 
 Instructions:
 
+Format:
+
 Subject: Application for [Specific Job Title] - [Your Name]
 
-Dear [Hiring Manager],
+Dear Hiring Manager,
 
-I am writing to express my interest in the [Specific Job Title] position at [Company Name]. With a background in [mention your primary field or expertise from your resume] and a strong foundation in [mention 2-3 key skills relevant to the job description], I am confident in my ability to contribute to your team's success.
+My name is {name}, and I am writing to express my interest in the [Specific Job Title] position at [Company Name]. I have a background in [mention your primary field or expertise from your resume] with a focus on [mention 2-3 key skills relevant to the job description].
 
-During my time at [Mention a relevant company from your resume], I gained valuable experience in [mention 2-3 key responsibilities or skills developed in that role that align with the job description]. I am particularly skilled in [mention a specific achievement or area of strength from your resume, such as 'designed and implemented data solutions', 'developed and optimized ETL pipelines', or 'applied ML techniques'].
+In my previous role at [Mention a relevant company from your resume], I gained valuable experience in [mention 2-3 key responsibilities or skills developed in that role that align with the job description]. I am particularly skilled in [mention a specific achievement or area of strength from your resume, such as 'designed and implemented data solutions', 'developed and optimized ETL pipelines', or 'applied ML techniques']. For example, [briefly describe a relevant achievement or project].
 
-I am eager to learn more about the opportunities at [Company Name] and how my skills in [mention another relevant skill or technology from your resume, like 'Azure', 'Databricks', 'Tableau', 'PyTorch', etc.] can support your objectives. My resume, which I have attached, provides further detail on my qualifications and experience.
+I am eager to learn more about the opportunities at [Company Name] and how my skills in [mention another relevant skill or technology from your resume, like 'Azure', 'Databricks', 'Tableau', 'PyTorch', etc.] can contribute to your team. My resume, which I have attached, provides further detail on my qualifications and experience.
 
 Thank you for your time and consideration. I look forward to the possibility of discussing this opportunity further.
 
 Sincerely,
+
 {name}
 [Your Phone Number (if available in resume)]
 [Your LinkedIn Profile URL (if available in resume)]
@@ -96,7 +107,7 @@ Key Considerations for ATS Optimization:
 - Incorporate keywords from the job description where appropriate.
 - Maintain a professional and standard email format.
 
-Please ensure the email is professional and highlights the candidate's relevant skills and experience for a general employer.
+Please ensure the email is professional and highlights the candidate's relevant skills and experience for a general employer, following the provided format.
 """
         else:
             prompt = f"""You are an expert at writing job application emails. Based on the information provided in the user's resume and the job description, write an email in the following format:
@@ -209,19 +220,25 @@ def generate_tailored_resume(default_resume: str, job_description: str, google_a
     genai.configure(api_key=google_api_key)
     model = genai.GenerativeModel('gemini-2.0-pro-exp-02-05')
 
-    prompt = f"""Craft a highly tailored and impactful resume that positions you as the ideal candidate for the role, using the default resume and job description provided. Ensure the resume is rigorously optimized for ATS by integrating targeted keywords, clear formatting, and emphasis on the most relevant skills and achievements.
+    prompt = f"""Craft a highly targeted, ATS-optimized resume that positions you as the ideal candidate for the role. Using the provided materials below, transform your default resume into a customized document that highlights your unique qualifications for the position.
 
-        Default Resume:
-        {default_resume}
+Instructions:
 
-        Job Description:
-        {job_description}
+Craft a highly tailored, ATS-optimized resume based solely on the materials provided below. Your final output should include only the revised resume text without any additional commentary or explanations.
 
-        Key Focus Areas:
-        - Revise the summary to directly reflect and align with the job description.
-        - Emphasize pertinent skills, achievements, and experiences that demonstrate your fit for the role.
-        - Strategically incorporate keywords from the job description to maximize ATS compatibility.
-        - Maintain a professional, industry-standard resume format.
+Default Resume:
+{default_resume}
+
+Job Description:
+{job_description}
+
+Instructions:
+
+Revise the professional summary into two concise sentences that directly reflect the job description.
+Emphasize the most relevant skills, achievements, and experiences that align with the role.
+Seamlessly incorporate targeted keywords from the job description to enhance ATS compatibility.
+Ensure the resume follows a clean, professional, and industry-standard format (rmd format).
+Provide only the tailored resume in your response.
     """
 
     try:
