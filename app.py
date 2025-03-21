@@ -88,6 +88,7 @@ def job():
         "Choose to generate:",
         ("Email", "Cover Letter")
     )
+    st.write(f"Generation Type: {generation_type}") # Debugging line
 
     email_recipient_type: Optional[str] = None
     if generation_type == "Email":
@@ -124,11 +125,11 @@ def job():
                 st.subheader("Feedback")
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("👍 Good"):
+                    if st.button("👍 Good", key="good_feedback"):
                         print("Feedback: Positive")  # In a real app, store this feedback
                         st.success("Thank you for your feedback!")
                 with col2:
-                    if st.button("👎 Bad"):
+                    if st.button("👎 Bad", key="bad_feedback"):
                         print("Feedback: Negative")  # In a real app, store this feedback
                         st.error("Thank you for your feedback. We'll work on improving.")
 
