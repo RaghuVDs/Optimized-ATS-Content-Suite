@@ -156,7 +156,7 @@ Instructions:
 Ensure the generated email is professional, enthusiastic, and tailored to the specific job.
 """
     elif generation_type == "Cover Letter":
-        prompt = f"""You are an expert at writing highly effective cover letters for data professionals. Your goal is to create a compelling and tailored cover letter that will impress hiring managers. Use the information provided in the user's resume and the job description to craft the best possible cover letter.
+        prompt = f"""You are an expert at writing highly effective cover letters for data professionals. Your goal is to create a compelling and tailored cover letter that will impress hiring managers around 350 to 500 words. Use the information provided in the user's resume and the job description to craft the best possible cover letter.
 
         User's Name: {name}
         User's Email: {email}

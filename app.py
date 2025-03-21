@@ -11,7 +11,7 @@ def job():
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p style='text-align: center;'>Enter your details and the job description to generate an email, cover letter, or a tailored resume.</p>",
+        "<p style='text-align: center;'>Enter your details and the job description to generate an email, cover letter, and a tailored resume.</p>",
         unsafe_allow_html=True,
     )
 
@@ -72,32 +72,22 @@ def job():
     # Option to generate tailored resume
     generate_resume = st.checkbox("Generate a tailored resume based on the job description?")
     tailored_resume_output: Optional[str] = None
-    if generate_resume and default_resume_content and job_description:
-        with st.spinner("Generating tailored resume..."):
-            tailored_resume_output = generate_tailored_resume(default_resume_content, job_description, google_api_key)
-        if tailored_resume_output:
-            st.subheader("Generated Tailored Resume:")
-            st.markdown(tailored_resume_output)
-            resume_content = tailored_resume_output # Use the generated resume for further steps
-        else:
-            st.error("Failed to generate tailored resume.")
 
-    # Option to generate email or cover letter
-    st.subheader("Generate Application Text")
-    generation_type = st.radio(
-        "Choose to generate:",
-        ("Email", "Cover Letter")
-    )
-    st.write(f"Generation Type: {generation_type}") # Debugging line
-
+    # Option to generate email
+    st.subheader("Email Options")
+    generate_email = st.checkbox("Generate Email?")
     email_recipient_type: Optional[str] = None
-    if generation_type == "Email":
+    if generate_email:
         email_recipient_type = st.radio(
             "Send email to:",
             ("Talent Acquisition and Hiring Manager", "General Employer")
         )
 
-    if st.button("Generate Application Text"):
+    # Option to generate cover letter
+    st.subheader("Cover Letter Options")
+    generate_cover_letter = st.checkbox("Generate Cover Letter?")
+
+    if st.button("Generate All Applications"):
         if not name:
             st.error("Please enter your name.")
         elif not email:
@@ -107,20 +97,67 @@ def job():
         elif not resume_content:
             st.error("No resume content available. Please upload a resume or ensure the default resume PDF exists and is readable.")
         else:
-            with st.spinner(f"Generating {generation_type.lower()}..."):
-                output_text = generate_application_text(
-                    name=name,
-                    email=email,
-                    job_description=job_description,
-                    resume_content=resume_content,
-                    generation_type=generation_type,
-                    google_api_key=google_api_key,
-                    tone=tone,
-                    email_recipient_type=email_recipient_type # Pass the new parameter
-                )
-                st.subheader(f"Generated {generation_type} ({tone} Tone):")
-                st.markdown(output_text)
+            generated_outputs = {}
+            with st.spinner("Generating applications..."):
+                # Generate tailored resume if requested
+                if generate_resume and default_resume_content and job_description:
+                    tailored_resume_output = generate_tailored_resume(default_resume_content, job_description, google_api_key)
+                    if tailored_resume_output:
+                        generated_outputs["tailored_resume"] = tailored_resume_output
+                        resume_content = tailored_resume_output # Use the generated resume for further steps
+                    else:
+                        st.error("Failed to generate tailored resume.")
 
+                # Generate email if requested
+                if generate_email:
+                    if email_recipient_type:
+                        email_output = generate_application_text(
+                            name=name,
+                            email=email,
+                            job_description=job_description,
+                            resume_content=resume_content,
+                            generation_type="Email",
+                            google_api_key=google_api_key,
+                            tone=tone,
+                            email_recipient_type=email_recipient_type
+                        )
+                        if email_output:
+                            generated_outputs["email"] = email_output
+                        else:
+                            st.error("Failed to generate email.")
+                    else:
+                        st.warning("Please select the email recipient type.")
+
+                # Generate cover letter if requested
+                if generate_cover_letter:
+                    cover_letter_output = generate_application_text(
+                        name=name,
+                        email=email,
+                        job_description=job_description,
+                        resume_content=resume_content,
+                        generation_type="Cover Letter",
+                        google_api_key=google_api_key,
+                        tone=tone
+                    )
+                    if cover_letter_output:
+                        generated_outputs["cover_letter"] = cover_letter_output
+                    else:
+                        st.error("Failed to generate cover letter.")
+
+            # Display generated outputs
+            if "tailored_resume" in generated_outputs:
+                st.subheader("Generated Tailored Resume:")
+                st.markdown(generated_outputs["tailored_resume"])
+
+            if "email" in generated_outputs:
+                st.subheader(f"Generated Email ({tone} Tone):")
+                st.markdown(generated_outputs["email"])
+
+            if "cover_letter" in generated_outputs:
+                st.subheader(f"Generated Cover Letter ({tone} Tone):")
+                st.markdown(generated_outputs["cover_letter"])
+
+            if generated_outputs:
                 # Feedback section
                 st.subheader("Feedback")
                 col1, col2 = st.columns(2)
@@ -132,6 +169,8 @@ def job():
                     if st.button("👎 Bad", key="bad_feedback"):
                         print("Feedback: Negative")  # In a real app, store this feedback
                         st.error("Thank you for your feedback. We'll work on improving.")
+            elif not (generate_resume or generate_email or generate_cover_letter):
+                st.info("Please select at least one application type to generate.")
 
 if __name__ == "__main__":
     job()
