@@ -4,17 +4,17 @@ import os
 from io import StringIO
 import time
 import asyncio # Import asyncio
-import re # For finding keywords later if needed, and cleaning text
+import re # For cleaning text
 import logging # Import logging
-from typing import Optional, Dict, List, Any, AsyncGenerator # Only necessary typing imports
+from typing import Optional, Dict, List, Any, AsyncGenerator # Only necessary typing imports for app.py
 
 # --- Constants ---
 DEFAULT_RESUME_TXT_PATH = "/workspaces/688-HW/default_resume.txt" # UPDATE THIS PATH if needed
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="ATS Content Suite Generator (No Highlight)",
-    page_icon="✨",
+    page_title="Enhanced ATS Content Suite Generator",
+    page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -27,13 +27,13 @@ def get_api_key():
     """Retrieves the Google API Key from secrets or user input."""
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-        # st.sidebar.success("API Key loaded from Secrets.", icon="✅") # Reduce clutter
+        # st.sidebar.success("API Key loaded from Secrets.", icon="✅")
         return api_key
     except (FileNotFoundError, KeyError):
         st.sidebar.warning("API Key not found in Secrets.", icon="⚠️")
         api_key = st.sidebar.text_input("Enter Google API Key:", type="password", key="api_key_input")
         if not api_key:
-            st.sidebar.error("API Key is required to run the generator.", icon="❌")
+            st.sidebar.error("API Key is required.", icon="❌")
             return None
         st.sidebar.caption("Tip: Set up Streamlit Secrets for secure key management.")
         return api_key
@@ -57,8 +57,6 @@ def read_text_file(file_path: str) -> Optional[str]:
         logging.error(f"Error reading default resume file '{file_path}': {e}", exc_info=True)
         return None
 
-# Removed get_jd_keywords and highlight_text functions
-
 async def _collect_stream(async_generator: AsyncGenerator[str, None]) -> Dict[str, Any]:
     """Helper to collect text from an async stream generator and handle errors."""
     full_text_list = []
@@ -79,8 +77,10 @@ async def _collect_stream(async_generator: AsyncGenerator[str, None]) -> Dict[st
             return {"error": f"{error_found}\n(Collected text before error: '{collected_text[:200]}...')"}
 
         full_text = "".join(full_text_list)
+        # Clean up potential generation markers added in llm_handler
         full_text = re.sub(r'^--- Generating.*?---\n?', '', full_text, flags=re.MULTILINE)
         full_text = re.sub(r'\n?--- Generating.*?---\n?', '', full_text, flags=re.MULTILINE)
+        full_text = re.sub(r'\n?--- Data Preparation.*?---\n?', '', full_text, flags=re.MULTILINE) # Added cleanup
 
         if not full_text.strip():
              return {"error": "Generation stream completed but yielded no text content."}
@@ -90,6 +90,7 @@ async def _collect_stream(async_generator: AsyncGenerator[str, None]) -> Dict[st
     except Exception as e:
         logging.error(f"Error collecting stream: {e}", exc_info=True)
         return {"error": f"Stream collection error: {e}"}
+
 
 # --- Async Task Runner ---
 async def run_generation_tasks(tasks_to_run: Dict[str, asyncio.Task], prep_data: Dict, api_key: str):
@@ -131,6 +132,7 @@ async def run_generation_tasks(tasks_to_run: Dict[str, asyncio.Task], prep_data:
                  email_text, validation_dict = result
                  if email_text:
                      st.session_state.generation_results[name] = {"text": email_text}
+                     # Store the validation result returned directly by the email function
                      st.session_state.validation_results[name] = validation_dict or {"warning": "No validation data returned by email task."}
                  else:
                      error_msg = validation_dict.get("error", "Email generation returned None.") if validation_dict else "Email generation failed."
@@ -180,13 +182,11 @@ async def run_generation_tasks(tasks_to_run: Dict[str, asyncio.Task], prep_data:
              for name in validation_tasks.keys():
                  if name not in st.session_state.validation_results:
                       st.session_state.validation_results[name] = {"error": f"Failed to gather validation results: {e_val_gather}"}
-
     status_placeholder.empty() # Clear status messages
 
-
 # --- Application UI ---
-st.title("🚀 Advanced ATS Content Suite Generator")
-st.markdown(f"Generate tailored application documents asynchronously. Uses `{os.path.basename(DEFAULT_RESUME_TXT_PATH)}` as fallback.")
+st.title("🚀 Enhanced ATS Content Suite Generator")
+st.markdown(f"Generates tailored documents, focusing on incorporating relevant JD keywords. Uses `{os.path.basename(DEFAULT_RESUME_TXT_PATH)}` as fallback.")
 
 with st.sidebar:
     st.header("⚙️ Configuration")
@@ -212,7 +212,9 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("💾 Resume Input Source")
     st.caption(f"Priority: Uploaded `.txt` ➔ Pasted Text ➔ Default (`{os.path.basename(DEFAULT_RESUME_TXT_PATH)}`)")
-    st.session_state.resume_source_feedback = st.empty() # Placeholder for source feedback
+    # Placeholder for resume source feedback
+    if 'resume_source_feedback' not in st.session_state:
+        st.session_state.resume_source_feedback = st.empty()
     st.markdown("---")
     st.info("Provide accurate Job Description and Resume inputs for best results.")
 
@@ -248,17 +250,19 @@ generate_button = st.button("✨ Generate Selected Documents", type="primary", u
 # --- State Initialization ---
 if 'generation_results' not in st.session_state: st.session_state.generation_results = {}
 if 'validation_results' not in st.session_state: st.session_state.validation_results = {}
-# Removed jd_keywords from state as it's not used for highlighting anymore
 if 'prep_data' not in st.session_state: st.session_state.prep_data = {}
 if 'run_key' not in st.session_state: st.session_state.run_key = 0
+if 'missing_keywords_identified' not in st.session_state: st.session_state.missing_keywords_identified = []
+
 
 # --- Button Click Handler ---
 if generate_button:
     st.session_state.run_key += 1
-    st.session_state.generation_results = {} # Clear previous results
+    st.session_state.generation_results = {} # Clear previous run's results
     st.session_state.validation_results = {}
     st.session_state.prep_data = {}
-    if 'resume_source_feedback' in st.session_state: # Check if placeholder exists
+    st.session_state.missing_keywords_identified = [] # Reset
+    if hasattr(st.session_state, 'resume_source_feedback'): # Check if widget exists
         st.session_state.resume_source_feedback.empty() # Clear previous source feedback
 
     # --- Determine Resume Content (Sync) ---
@@ -268,36 +272,26 @@ if generate_button:
         if uploaded_resume is not None:
             stringio = StringIO(uploaded_resume.getvalue().decode("utf-8"))
             final_resume_content = stringio.read().strip()
-            if final_resume_content:
-                resume_source = "Uploaded File"
-            else:
-                st.warning("Uploaded resume file is empty.")
-                resume_source = "Uploaded (Empty)"
+            if final_resume_content: resume_source = "Uploaded File"
+            else: st.warning("Uploaded resume file is empty."); resume_source = "Uploaded (Empty)"
         if final_resume_content is None and resume_text_area.strip():
-            final_resume_content = resume_text_area.strip()
-            resume_source = "Pasted Text"
+            final_resume_content = resume_text_area.strip(); resume_source = "Pasted Text"
         if final_resume_content is None:
-            # Read from default file path
             final_resume_content = read_text_file(DEFAULT_RESUME_TXT_PATH)
-            if final_resume_content:
-                resume_source = f"Default File ({os.path.basename(DEFAULT_RESUME_TXT_PATH)})"
-            # else: resume_source remains "None Available" (error handled in read_text_file)
+            if final_resume_content: resume_source = f"Default File ({os.path.basename(DEFAULT_RESUME_TXT_PATH)})"
+            # else: resume_source remains "None Available"
 
     except Exception as e:
         st.error(f"Error processing resume input: {e}")
         logging.error(f"Error processing resume input: {e}", exc_info=True)
-        final_resume_content = None
-        resume_source = "Error Reading Input"
+        final_resume_content = None; resume_source = "Error Reading Input"
 
-    # Display resume source feedback (Check if feedback widget exists)
+    # Display resume source feedback
     if hasattr(st.session_state, 'resume_source_feedback'):
         if resume_source not in ["None Available", "Error Reading Input", "Uploaded (Empty)"]:
             st.session_state.resume_source_feedback.success(f"Using resume from: **{resume_source}**", icon="💾")
-        elif resume_source == "None Available":
-            st.session_state.resume_source_feedback.error("No resume source available!", icon="❌")
-        elif resume_source == "Uploaded (Empty)":
-             st.session_state.resume_source_feedback.warning("Using empty uploaded file.", icon="⚠️")
-
+        elif resume_source != "Unknown": # Only show error/warning if determination finished
+             st.session_state.resume_source_feedback.error(f"Resume source issue: {resume_source}", icon="❌")
 
     # --- Input Validation (Sync) ---
     validation_passed = True
@@ -317,7 +311,7 @@ if generate_button:
         prep_placeholder = st.empty()
         prep_data = {}
         try:
-            prep_placeholder.info("⚙️ Preparing & analyzing inputs...")
+            prep_placeholder.info("⚙️ Preparing & analyzing inputs (incl. keyword comparison)...")
             prep_data = await llm_handler._prepare_common_data(job_desc, final_resume_content, google_api_key)
             st.session_state.prep_data = prep_data
             prep_placeholder.empty()
@@ -327,11 +321,19 @@ if generate_button:
                  logging.error(f"Data Preparation Failed: {prep_data['error']}")
                  return
 
-            if prep_data.get("warning"):
-                 st.warning(prep_data["warning"])
+            if prep_data.get("warning"): st.warning(prep_data["warning"])
 
-            st.success("✅ Inputs analyzed.", icon="🔍")
+            # --- Store and Display Missing Keywords ---
+            st.session_state.missing_keywords_identified = prep_data.get("missing_keywords_from_resume", [])
+            if st.session_state.missing_keywords_identified:
+                st.info(f"Keywords from JD potentially missing/underrepresented in resume: `{', '.join(st.session_state.missing_keywords_identified)}` (Attempting incorporation).")
+            else:
+                st.success("✅ Input analysis complete. No specific missing resume keywords identified for targeted incorporation.")
+            # Add a small delay so user can see the message
+            await asyncio.sleep(1)
 
+
+            # --- Create Async Tasks ---
             tasks = {}
             common_args = {
                 "name": candidate_name or "Candidate",
@@ -359,7 +361,9 @@ if generate_button:
                     )
                 )
 
+            # --- Run Tasks Concurrently ---
             if tasks:
+                # Pass prep_data and api_key to the task runner
                 await run_generation_tasks(tasks, prep_data, google_api_key)
             # else case handled by validation
 
@@ -368,6 +372,8 @@ if generate_button:
              st.error(f"An unexpected error occurred during asynchronous execution: {main_e}")
              logging.exception("Error in async_main execution:")
 
+
+    # --- Execute the Main Async Function ---
     if validation_passed:
         st.info(f"Initiating generation...")
         try:
@@ -384,10 +390,17 @@ if generate_button:
 output_display_key = f"output_display_{st.session_state.run_key}"
 
 with st.container(key=output_display_key):
-    if st.session_state.generation_results:
+    # Check if generation was actually attempted in this run key cycle
+    # Useful if validation failed after button click but before async_main ran fully
+    if f"output_area_{st.session_state.run_key}" not in st.session_state and not st.session_state.generation_results:
+         logging.info(f"Run key {st.session_state.run_key}: No generation results found to display.")
+    elif st.session_state.generation_results:
         st.markdown("---")
         st.subheader("✨ Generated Documents & Validation")
         output_order = ["Resume", "Cover Letter", "Email"]
+
+        # Get the list of keywords identified as missing during prep for this run
+        originally_missing_keywords = set(st.session_state.get("missing_keywords_identified", []))
 
         for name in output_order:
             if name in st.session_state.generation_results:
@@ -398,7 +411,6 @@ with st.container(key=output_display_key):
                 with st.expander(f"{icon} **{name}**", expanded=True):
                     if result_data.get("error"):
                         st.error(f"Generation Error: {result_data['error']}")
-                        # Show raw validation response only if validation also had an error and has raw data
                         if validation_data and validation_data.get("error") and validation_data.get("raw_response"):
                             with st.expander("Show Raw Validation Response (Debug)"):
                                 st.code(validation_data["raw_response"], language=None)
@@ -406,7 +418,7 @@ with st.container(key=output_display_key):
                     elif result_data.get("text"):
                         full_text = result_data["text"]
 
-                        # Editable Text Area (NO highlighting)
+                        # --- Editable Text Area (NO highlighting) ---
                         edited_text = st.text_area(
                             f"Editable {name}:",
                             value=full_text, # Display plain text
@@ -414,19 +426,13 @@ with st.container(key=output_display_key):
                             key=f"{name}_output_area_{st.session_state.run_key}"
                         )
 
-                        # Download Button
+                        # --- Download Button ---
                         download_filename = f"{candidate_name.replace(' ','_') or 'Candidate'}_{name.replace(' ','_')}_{time.strftime('%Y%m%d')}.txt"
-                        try:
-                           download_data = edited_text.encode('utf-8')
-                        except Exception as enc_e:
-                           st.error(f"Error encoding text for download: {enc_e}")
-                           download_data = full_text.encode('utf-8') # Fallback
-
+                        try: download_data = edited_text.encode('utf-8')
+                        except Exception as enc_e: st.error(f"Encoding Error: {enc_e}"); download_data = full_text.encode('utf-8')
                         st.download_button(
-                            label=f"Download {name} (.txt)",
-                            data=download_data,
-                            file_name=download_filename,
-                            mime="text/plain",
+                            label=f"Download {name} (.txt)", data=download_data,
+                            file_name=download_filename, mime="text/plain",
                             key=f"{name}_download_{st.session_state.run_key}"
                         )
 
@@ -444,40 +450,36 @@ with st.container(key=output_display_key):
                                 # Display score and progress bar
                                 progress_value = 0.0
                                 if isinstance(score, (int, float)):
-                                    try:
-                                        score_float = float(score)
-                                        progress_value = min(score_float, 5.0) / 5.0
-                                    except: pass # Keep progress 0 if conversion fails
+                                    try: progress_value = min(float(score), 5.0) / 5.0
+                                    except: pass
                                 st.progress(progress_value)
                                 st.metric("ATS Score (1-5):", score)
 
-                                # --- Validation Details (Modified Keyword Section) ---
+                                # --- Validation Details ---
                                 col_val1, col_val2 = st.columns(2)
                                 with col_val1:
                                     kw_check = validation_data.get("keyword_check", {})
                                     st.write("**Keyword Analysis:**")
                                     if isinstance(kw_check, dict):
-                                        # Display Keywords Included from JD
-                                        included_keywords = kw_check.get('found_keywords', [])
-                                        st.write("*JD Keywords Included:*") # Label
-                                        if included_keywords:
-                                            st.caption(f"`{', '.join(included_keywords)}`")
-                                        else:
-                                            st.caption("None specifically identified from JD.")
+                                        # Show keywords found in output by validation
+                                        found_keywords_in_output = set(kw_check.get('found_keywords', []))
+                                        st.write("*JD Keywords Included (in Output):*")
+                                        if found_keywords_in_output:
+                                            st.caption(f"`{', '.join(sorted(list(found_keywords_in_output)))}`")
+                                        else: st.caption("None specifically identified.")
 
-                                        # Optionally keep suggestions for missing keywords
-                                        missing_keywords = kw_check.get('missing_suggestions', [])
-                                        st.write("*JD Keywords Missing (Suggestions):*") # Label
-                                        if missing_keywords:
-                                             st.caption(f"`{', '.join(missing_keywords)}`")
+                                        # Show which initially missing keywords were found
+                                        successfully_incorporated = sorted(list(originally_missing_keywords.intersection(found_keywords_in_output)))
+                                        st.write("*Successfully Incorporated Missing Keywords:*")
+                                        if successfully_incorporated:
+                                            st.success(f"`{', '.join(successfully_incorporated)}`", icon="✅")
                                         else:
-                                             st.caption("No specific missing keywords suggested.")
+                                            st.caption("None of the initially missing keywords found in output.")
 
-                                        st.write("*Keyword Density Impression:*") # Label
+                                        st.write("*Keyword Density Impression:*")
                                         st.caption(f"*{kw_check.get('density_impression', 'N/A')}*")
 
-                                    else:
-                                        st.caption(f"Keyword Info: {kw_check}") # Fallback
+                                    else: st.caption(f"Keyword Info: {kw_check}")
 
                                 with col_val2: # Clarity, Structure, Formatting
                                     st.write(f"**Clarity/Structure:**")
@@ -490,17 +492,17 @@ with st.container(key=output_display_key):
                                 # --- End Validation Details ---
                         else:
                             if not result_data.get("error"):
-                                 st.warning("Validation results are pending or unavailable.")
+                                 st.warning("Validation results pending or unavailable.")
                         # --- END VALIDATION DISPLAY ---
                     else:
                          st.warning("No text content found in the generation result.")
 
+
 # --- Footer ---
 st.markdown("---")
 try:
-    # Syracuse, New York, United States is in EDT on March 26, 2025
-    # Using system time for simplicity, assuming server/local time is acceptable
-    current_date = time.strftime('%Y-%m-%d %H:%M:%S %Z') # Add Timezone if available
+    # March 26, 2025, Syracuse, NY, USA
+    current_date = time.strftime('%Y-%m-%d %H:%M:%S %Z')
     current_location = "Syracuse, NY, USA"
     st.caption(f"Powered by Google Gemini | Review & Personalize All Content | {current_date} ({current_location})")
 except Exception as e:
