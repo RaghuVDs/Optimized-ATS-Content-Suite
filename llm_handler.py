@@ -234,16 +234,12 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
         response_text = await _call_llm_async(prompt, google_api_key, EXTRACTION_MODEL_NAME, 0.1, True)
         # Robust JSON parsing
         try:
-            # Initial cleanup
+            # Initial cleanup (keep as is)
             raw_json = response_text.strip().replace('```json', '').replace('```', '').strip()
-            # Handle potential trailing commas
             raw_json = re.sub(r',\s*([}\]])', r'\1', raw_json)
 
-            # *** ADD CONTROL CHARACTER CLEANING ***
-            # Remove characters in the C0 control character range (U+0000 to U+001F)
-            # except for tab (\t), newline (\n), carriage return (\r), form feed (\f), backspace (\b)
-            # Using regex to replace unwanted control chars with empty string
-            control_chars_pattern = r'[\x00-\x08\x0b\x0c\x0e-\x1f\x80-\x9f]' # <-- EXPANDED RANGE
+            # Control character cleaning (keep existing pattern for now, logging will guide changes)
+            control_chars_pattern = r'[\x00-\x08\x0b\x0c\x0e-\x1f\x80-\x9f]'
             cleaned_raw_json = re.sub(control_chars_pattern, '', raw_json)
             # ********************************
 
@@ -270,29 +266,41 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
             return {"sections": sections, "extracted_keywords": keywords, "achievements": achievements, "error": None}
 
         except json.JSONDecodeError as json_err:
-            # *** ENHANCED LOGGING ***
-            try:
-                problem_char = cleaned_raw_json[json_err.pos]
-                problem_char_code = ord(problem_char)
-                logging.error(
-                    f"Failed to parse resume section/keyword JSON: {json_err}. "
-                    f"Problematic character: '{problem_char}' (Code: {problem_char_code}, Hex: {hex(problem_char_code)}) at pos {json_err.pos}. "
-                    f"Cleaned JSON Snippet (around error): '{cleaned_raw_json[max(0, json_err.pos-30):json_err.pos+30]}' "
-                    f"Original Raw Snippet: '{raw_json[max(0, json_err.pos-30):json_err.pos+30]}...'"
-                )
-            except IndexError: # Error might be at the very end
-                 logging.error(
-                    f"Failed to parse resume section/keyword JSON: {json_err}. "
-                    f"Error position {json_err.pos} might be out of bounds or related to overall structure. "
-                    f"Cleaned JSON Snippet (end): '...{cleaned_raw_json[-60:]}' "
-                    f"Original Raw Snippet (end): '...{raw_json[-60:]}'"
-                 )
-            # **************************
-            error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {json_err.pos}) even after extended cleaning." # Updated message
-            error_result["raw_response_snippet"] = raw_json[max(0, json_err.pos-50):json_err.pos+50]
+            # --- ENHANCED LOGGING TO IDENTIFY CHARACTER ---
+            err_pos = json_err.pos
+            err_msg = f"Failed to parse resume JSON: {json_err} at pos {err_pos}."
+            problem_char_info = "Could not identify problematic char (check pos validity or string length)."
+            snippet_info = f"Cleaned JSON Snippet (around error pos {err_pos}): '{cleaned_raw_json[max(0, err_pos-30):min(len(cleaned_raw_json), err_pos+30)]}'" # Safer slicing
+
+            # Try to get the character and its code point
+            if 0 <= err_pos < len(cleaned_raw_json):
+                try:
+                    problem_char = cleaned_raw_json[err_pos]
+                    problem_char_code = ord(problem_char)
+                    problem_char_info = f"Problematic character: '{repr(problem_char)}' (Unicode Code Point: {problem_char_code}, Hex: {hex(problem_char_code)})"
+                except Exception as char_e:
+                    problem_char_info = f"Error accessing char at pos {err_pos}: {char_e}"
+            elif err_pos == len(cleaned_raw_json):
+                problem_char_info = "Error occurred at the very end of the string."
+
+            # Log the detailed information
+            logging.error(f"{err_msg} {problem_char_info}. {snippet_info}")
+            # Optionally log more context if the error persists and the snippet isn't enough
+            # logging.debug(f"Full cleaned JSON attempt that failed: {cleaned_raw_json}")
+            # --- END ENHANCED LOGGING ---
+
+            # Update the error result for the app
+            error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {err_pos}) even after cleaning. {problem_char_info}"
+            error_result["raw_response_snippet"] = cleaned_raw_json[max(0, err_pos-50):min(len(cleaned_raw_json), err_pos+50)] # Safer slicing
+            return error_result
+
+        except Exception as e_inner: # Catch other potential errors during parsing/validation
+            logging.error(f"Inner error during resume JSON processing: {e_inner}", exc_info=True)
+            error_result["error"] = f"Error processing resume JSON structure: {e_inner}"
             return error_result
 
     except Exception as e:
+        # Outer exception handling remains the same
         logging.error(f"Error parsing advanced resume with LLM: {e}", exc_info=True)
         error_result["error"] = f"Advanced Resume Parsing Error: {e}"
         return error_result
