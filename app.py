@@ -12,6 +12,7 @@ from typing import Optional, Dict, List, Any, AsyncGenerator
 import textstat # Import textstat for readability
 import nest_asyncio
 nest_asyncio.apply()
+import google.generativeai as genai
 
 # --- Constants ---
 # UPDATE THIS PATH if your default resume is located elsewhere
@@ -325,22 +326,40 @@ def main():
         async def async_main():
             prep_placeholder = st.empty()
             prep_data = {}
+            genai_configured_this_run = False
             try:
+                if google_api_key:
+                    try:
+                        # Configure only once per execution of async_main
+                        # Check a more reliable attribute or simply configure every time
+                        # Let's try configuring every time within the run, safe due to idempotency
+                        genai.configure(api_key=google_api_key)
+                        genai_configured_this_run = True
+                        logging.info("Google GenAI configured within async_main.")
+
+                    except Exception as config_e:
+                        st.error(f"Failed to configure Google GenAI: {config_e}")
+                        logging.error(f"Failed to configure Google GenAI in async_main: {config_e}", exc_info=True)
+                        prep_placeholder.empty()
+                        return # Stop if configuration fails
+                else:
+                    # This case should be caught by validation_passed, but double-check
+                    st.error("API Key missing, cannot configure Google GenAI.")
+                    prep_placeholder.empty()
+                    return
                 # --- Run Data Prep Only If Needed ---
                 needs_prep = gen_resume or gen_cover_letter or gen_email or gen_linkedin
                 if needs_prep:
-                    prep_placeholder.info("⚙️ Preparing & analyzing inputs (keywords, ranking, parsing)...")
-                    # Make the actual call to the async function
+                    prep_placeholder.info("⚙️ Preparing & analyzing inputs...")
+                    # Pass api_key down, although configure should have set it globally for the lib instance
                     prep_data = await llm_handler._prepare_common_data(job_desc, final_resume_content, google_api_key)
-                    st.session_state.prep_data = prep_data # Store prep data in state
-                    prep_placeholder.empty() # Remove placeholder
+                    st.session_state.prep_data = prep_data
+                    prep_placeholder.empty()
 
-                    # Check for errors from preparation immediately
                     if prep_data.get("error"):
                         st.error(f"Data Preparation Failed: {prep_data['error']}. Cannot generate documents.")
                         logging.error(f"Data Preparation Failed: {prep_data['error']}")
-                        return # Stop async execution here
-
+                        return # Stop async execution
                     if prep_data.get("warning"): st.warning(prep_data["warning"]) # Show non-fatal warnings
 
                     # Store and Display Missing Keywords
@@ -356,47 +375,61 @@ def main():
 
                 # --- Create Async Tasks ---
                 tasks = {}
-                common_args_stream = {
-                    "name": candidate_name or "Candidate", # Use fallback if empty
-                    "email": candidate_email or "candidate@example.com", # Use fallback
+                common_args_stream = { # Pass API key here if needed by handlers, which it is
+                    "name": candidate_name or "Candidate",
+                    "email": candidate_email or "candidate@example.com",
                     "job_description": job_desc,
                     "resume_content": final_resume_content,
-                    "google_api_key": google_api_key,
+                    "google_api_key": google_api_key, # Make sure key is passed
                     "tone": tone
                 }
 
-                # Check if prep_data is valid before creating tasks that depend on it
-                # Also ensure generation for that type is selected
-                if prep_data and not prep_data.get("error"):
+                # Check if prep_data is valid BEFORE creating tasks needing it
+                prep_ok_for_dependent_tasks = needs_prep and prep_data and not prep_data.get("error")
+
+                if prep_ok_for_dependent_tasks:
                     if gen_resume: tasks["Resume"] = asyncio.create_task(_collect_stream(llm_handler.generate_application_text_streamed(**common_args_stream, generation_type=llm_handler.TYPE_RESUME)))
                     if gen_cover_letter: tasks["Cover Letter"] = asyncio.create_task(_collect_stream(llm_handler.generate_application_text_streamed(**common_args_stream, generation_type=llm_handler.TYPE_COVER_LETTER)))
                     if gen_email:
-                        tasks["Email"] = asyncio.create_task(
-                            llm_handler.generate_email_and_validate(
-                                **common_args_stream,
-                                email_recipient_type=email_recipient_type,
-                                job_link=job_link or None # Pass the job link input
-                            )
-                        )
+                         tasks["Email"] = asyncio.create_task(
+                             llm_handler.generate_email_and_validate(
+                                 **common_args_stream,
+                                 email_recipient_type=email_recipient_type,
+                                 job_link=job_link or None
+                             )
+                         )
                     if gen_linkedin:
-                        tasks["LinkedIn Message"] = asyncio.create_task(
-                            llm_handler.generate_linkedin_message(
-                                name=common_args_stream["name"],
-                                job_description_data=prep_data.get("jd_data", {}),
-                                resume_data=prep_data, # Pass full prep data
-                                google_api_key=google_api_key, tone=tone,
-                                connection_name=linkedin_connection_name or None
-                            )
-                        )
-                elif needs_prep: # Prep was needed but failed (caught above, but defensive)
-                    st.error("Cannot create generation tasks due to earlier data preparation error.")
-                    return
+                         # Ensure prep_data has necessary keys before accessing
+                         jd_data_for_linkedin = prep_data.get("jd_data", {})
+                         resume_data_for_linkedin = prep_data # Pass full prep data which includes keywords etc.
+                         tasks["LinkedIn Message"] = asyncio.create_task(
+                             llm_handler.generate_linkedin_message(
+                                 name=common_args_stream["name"],
+                                 job_description_data=jd_data_for_linkedin,
+                                 resume_data=resume_data_for_linkedin,
+                                 google_api_key=google_api_key,
+                                 tone=tone,
+                                 connection_name=linkedin_connection_name or None
+                             )
+                         )
+                elif needs_prep: # Prep was needed but failed
+                     st.error("Cannot create generation tasks due to earlier data preparation error.")
+                     return # Already handled above, but defensive check
 
                 # --- Run Tasks Concurrently ---
                 if tasks:
                     # Pass api_key needed for potential validation tasks inside run_generation_tasks
                     await run_generation_tasks(tasks, prep_data, google_api_key)
                 # else case handled by validation
+
+            # --- Run Tasks Concurrently ---
+                if tasks:
+                    # Pass api_key needed for validation tasks inside run_generation_tasks
+                    await run_generation_tasks(tasks, prep_data, google_api_key)
+                elif not needs_prep:
+                     st.info("No content selected for generation.") # Or handle as needed
+                # else case (needs_prep was true but prep failed) is handled above
+
 
             except Exception as main_e:
                 prep_placeholder.empty() # Ensure placeholder is removed on error
@@ -406,12 +439,11 @@ def main():
 
         # --- Execute ---
         if validation_passed:
-            st.info(f"Initiating generation...")
+            st.info("Initiating generation...")
             try:
                 asyncio.run(async_main()) # Run the orchestrator
-                st.success("✅ Generation process finished!", icon="🎉") # Message after all async ops complete
+                st.success("✅ Generation process finished!", icon="🎉")
             except Exception as e:
-                # Catch potential errors during asyncio.run setup/teardown itself
                 st.error(f"Error running the main async process: {e}")
                 logging.exception("Error calling asyncio.run(async_main):")
         else:

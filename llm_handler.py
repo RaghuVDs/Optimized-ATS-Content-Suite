@@ -25,41 +25,17 @@ RECIPIENT_GENERAL = "General Application / Unspecified"
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [LLM_Handler] %(message)s')
 
-# --- Helper: Configure Gemini Client ---
-gemini_configured = False
-gemini_config_lock = asyncio.Lock() # Lock to prevent race conditions during config
-
-async def _configure_gemini(api_key: str):
-    """Configures the GenAI client if not already done, thread-safe."""
-    global gemini_configured
-    if not gemini_configured:
-        async with gemini_config_lock:
-            # Double check after acquiring lock
-            if not gemini_configured:
-                if not api_key:
-                    logging.error("API Key is missing.")
-                    raise ValueError("Google API Key not provided.")
-                try:
-                    genai.configure(api_key=api_key)
-                    gemini_configured = True
-                    logging.info("Google GenAI configured.")
-                except Exception as e:
-                    gemini_configured = False # Ensure flag is reset on error
-                    logging.error(f"Failed to configure Google GenAI: {e}", exc_info=True)
-                    raise ConnectionError(f"Failed to configure Google API: {e}")
 
 # --- Helper: Robust LLM Call (Async) ---
 async def _call_llm_async(
     prompt: str,
-    api_key: str,
+    api_key: str, # Keep api_key argument, it might be needed if configure isn't global anymore (though it usually is)
     model_name: str,
-    temperature: float = 0.5, # Default temperature
+    temperature: float = 0.5,
     request_json: bool = False,
     stream: bool = False
-) -> Union[str, AsyncGenerator[str, None]]: # Ensure Union is imported from typing
+) -> Union[str, AsyncGenerator[str, None]]: # Ensure Union/AsyncGenerator are imported
     """General purpose async LLM caller with error handling and safety defaults."""
-    await _configure_gemini(api_key) # Ensure configured
-
     gen_config = genai.GenerationConfig(temperature=temperature)
     # Default safety settings - blocking potentially harmful content
     safety_settings=[
@@ -154,8 +130,6 @@ async def generate_linkedin_message(
 ) -> Optional[str]:
     """Generates a concise LinkedIn message (295-300 chars) focused on referrals."""
     try:
-        await _configure_gemini(google_api_key)
-
         # Extract context (same as before)
         jd_title = job_description_data.get('job_title', 'the open role')
         jd_company = job_description_data.get('company_name', 'your company')
