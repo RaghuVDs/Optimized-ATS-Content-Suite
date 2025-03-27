@@ -9,8 +9,8 @@ import logging
 # Make sure 'Union' is included in this line:
 from typing import Optional, Dict, List, Tuple, Any, AsyncGenerator, Union
 
-GENERATION_MODEL_NAME = 'gemini-1.5-flash'
-EXTRACTION_MODEL_NAME = 'gemini-1.5-flash'
+GENERATION_MODEL_NAME = 'gemini-2.5-pro-exp-03-25'
+EXTRACTION_MODEL_NAME = 'gemini-1.5-pro-latest'
 
 # Generation Types
 TYPE_RESUME = "RESUME"
@@ -575,7 +575,8 @@ async def generate_application_text_streamed(
             2.  **Contact Information First:** Place contact info clearly at the top: Name (as H1 `#`), Phone, Email, LinkedIn URL (full URL), City, State.
             3.  **Keyword Density Strategy:**
                 * Integrate keywords from 'Ranked Job Requirements' naturally throughout.
-                * Ensure **high density** of the **top 5-10 ranked requirements/keywords** within the `## Summary` and `## Skills` sections.
+                * The `## Summary` section MUST be **strictly 1 to 2 sentences long**. It should concisely highlight the candidate's most relevant qualifications for this specific role (`{jd_title}`) and incorporate several top-ranked keywords. # <--- ADDED LENGTH CONSTRAINT HERE
+                * Ensure **high density** of the **top 5-10 ranked requirements/keywords** within the `## Summary` (within the 1-2 sentences) and `## Skills` sections. # <--- Adjusted wording
                 * Weave relevant keywords into `## Experience` bullet points. Avoid keyword stuffing; maintain readability.
                 * If incorporating 'Potentially Missing Keywords', ensure fit. Flag uncertainty: `[Note: Keyword X included based on Y]`.
             4.  **ATS-Friendly Formatting ONLY:**
@@ -600,7 +601,7 @@ async def generate_application_text_streamed(
                 * **Missing Keywords:** 'Potentially Missing Keywords' handled well (integrated/flagged)?
             3.  **Content Quality & Clarity:**
                 * **Experience:** Strong action verbs & quantification? Impact clear?
-                * **Summary:** Concise, tailored, highlights key qualifications?
+                * **Summary:** Concise, tailored, highlights key qualifications? Is it concise and tailored, **strictly adhering to the 1-2 sentence limit**? Does it highlight key qualifications and top keywords effectively within that limit?
                 * **Overall:** Clear, concise, professional (`{tone}`), error-free? Readability?
             4.  **Requirement Alignment:** Content strongly evidences top job requirements?
             """
@@ -608,7 +609,7 @@ async def generate_application_text_streamed(
             * **Address ALL Critique Points:** Focus on feedback regarding ATS rules (structure, formatting, dates, keywords) and content quality.
             * **Fix ATS Issues:** Correct any non-standard sections, formatting, dates, or unclear structures. Ensure strict adherence to ATS rules.
             * **Optimize Keywords:** If density/relevance was weak, revise Summary/Skills/Experience to better incorporate top keywords naturally. Remove/justify `[Note: ...]` flags.
-            * **Improve Content:** Strengthen action verbs, quantification, clarity, and impact based on critique. Ensure strong requirement alignment.
+            * **Improve Content:** Strengthen action verbs, quantification, clarity, and impact. **Ensure the `## Summary` section is strictly 1-2 sentences, concise, tailored, and includes top keywords, addressing any critique points about its length or content.**
             * **Final Polish:** Ensure coherence, professionalism (`{tone}`), and zero errors.
             """
         else:
