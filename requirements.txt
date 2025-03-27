@@ -14,3 +14,4 @@ openai==0.28.0
 sentence-transformers
 scikit-learn
 numpy
+textstat
