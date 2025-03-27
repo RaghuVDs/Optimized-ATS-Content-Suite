@@ -10,6 +10,8 @@ import re # For cleaning text and finding notes
 import logging # Import logging
 from typing import Optional, Dict, List, Any, AsyncGenerator
 import textstat # Import textstat for readability
+import nest_asyncio
+nest_asyncio.apply()
 
 # --- Constants ---
 # UPDATE THIS PATH if your default resume is located elsewhere

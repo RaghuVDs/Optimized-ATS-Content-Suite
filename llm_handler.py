@@ -473,91 +473,231 @@ async def generate_application_text_streamed(
     name: str, email: str, job_description: str, resume_content: str,
     generation_type: str, google_api_key: str, tone: str
 ) -> AsyncGenerator[str, None]:
-    """Generates Resume or Cover Letter using refinement, enhanced prompts (async stream)."""
+    """
+    Generates Resume or Cover Letter using refinement and enhanced, type-specific prompts (async stream).
+    - Cover Letter focuses on deep company alignment using external research.
+    - Resume focuses on strict ATS optimization rules for high parseability and score.
+    """
     common_data = {}
     try:
-        # --- 1. Prepare Data ---
+        # --- 1. Prepare Data (Includes JD, Resume parsing, ranking, AND external company info) ---
+        yield "--- Preparing and analyzing inputs... ---\n"
         common_data = await _prepare_common_data(job_description, resume_content, google_api_key)
-        if common_data.get("error"): yield f"\n--- ERROR prep: {common_data['error']} ---\n"; return
-        if not common_data.get("jd_data") or not common_data.get("resume_sections"): yield "\n--- ERROR: Missing JD/Resume data ---\n"; return
 
-        # --- Format inputs ---
-        resume_sections_str = "\n\n".join(f"**{sec.upper()}**\n{content}" for sec, content in common_data.get("resume_sections", {}).items() if content)
-        MAX_RESUME_PROMPT_LEN = 6000
-        if len(resume_sections_str) > MAX_RESUME_PROMPT_LEN: resume_sections_str = resume_sections_str[:MAX_RESUME_PROMPT_LEN] + "\n... [Resume Truncated] ..."
+        # Handle potential data preparation errors
+        if common_data.get("error"):
+            yield f"\n--- ERROR during data preparation: {common_data['error']} ---\n"
+            # Optionally yield more debug info from common_data if available
+            missing_jd = not common_data.get("jd_data")
+            missing_resume = not common_data.get("resume_sections")
+            if missing_jd or missing_resume:
+                 yield f"\n--- Debug: Missing critical data (JD: {missing_jd}, Resume: {missing_resume}) ---\n"
+            return # Stop generation if prep failed critically
+
+        if not common_data.get("jd_data") or not common_data.get("resume_sections"):
+             yield "\n--- ERROR: Critical JD or Resume parsed data missing after preparation. ---\n"
+             return # Stop if essential parts are missing even if no major error was flagged
+
+
+        # --- Format common inputs ---
+        resume_sections_str = "\n\n".join(f"**{sec.upper()}**\n{content}" for sec, content in common_data.get("resume_sections", {}).items() if content and sec != 'full_text')
+        MAX_RESUME_PROMPT_LEN = 6000 # Adjust as needed for model context limits
+        if len(resume_sections_str) > MAX_RESUME_PROMPT_LEN:
+             resume_sections_str = resume_sections_str[:MAX_RESUME_PROMPT_LEN] + "\n... [Resume Sections Truncated] ..."
+        elif not resume_sections_str:
+             resume_sections_str = common_data.get("raw_resume", "Resume content not available.") # Fallback
 
         ranked_req_str = "\n".join(f"- {req}" for req in common_data.get("ranked_jd_requirements", [])) or "N/A"
         jd_title = common_data.get('jd_data', {}).get('job_title', 'N/A')
         jd_company = common_data.get('jd_data', {}).get('company_name', 'N/A')
-        company_context = common_data.get('jd_data', {}).get('company_values_mission_challenges', 'N/A')
+        # JD-extracted company context
+        company_context_jd = common_data.get('jd_data', {}).get('company_values_mission_challenges', 'N/A')
         missing_keywords = common_data.get("missing_keywords_from_resume", [])
         missing_keywords_str = ", ".join(f"`{kw}`" for kw in missing_keywords) if missing_keywords else "None identified"
         extracted_achievements = common_data.get("resume_achievements", [])
+        achievements_sample_str = json.dumps(extracted_achievements[:5], indent=2) # Sample for prompt brevity
 
-        # --- 2. Initial Draft Prompt (Enhanced) ---
-        draft_prompt = f"""
+        # --- Format External Company Info (if available) ---
+        ext_info = common_data.get("external_company_info", {})
+        external_company_prompt_section = "**External Company Research Findings:** Not Available/Fetch Error."
+        if not ext_info.get("error") and any(k not in ["error"] for k in ext_info): # Check if info exists beyond error key
+            ext_info_summary = ext_info.get('company_summary', 'N/A')
+            ext_info_news = ext_info.get('recent_news', 'N/A')
+            ext_info_values = ", ".join(ext_info.get('mission_values', [])) or 'N/A'
+            ext_info_culture = ", ".join(ext_info.get('culture_keywords', [])) or 'N/A'
+            external_company_prompt_section = f"""
+            **External Company Research Findings:**
+            - Company Overview: {ext_info_summary}
+            - Recent News/Developments: {ext_info_news}
+            - Stated Mission/Values: {ext_info_values}
+            - Inferred Culture Keywords: {ext_info_culture}
+            """
+        else:
+            # Log if external info fetch failed or was unavailable
+            logging.warning(f"External company info not available for prompts: {ext_info.get('error', 'No data')}")
+
+
+        # --- Define Type-Specific Prompt Components ---
+        draft_task_instructions = ""
+        critique_criteria = ""
+        refinement_instructions = ""
+        final_doc_type_name = generation_type # Default, might adjust capitalization later
+
+        # --- PROMPTS FOR COVER LETTER (Deep Company Alignment) ---
+        if generation_type == TYPE_COVER_LETTER:
+            final_doc_type_name = "Cover Letter"
+            draft_task_instructions = f"""
+            **Role:** Expert Cover Letter Strategist crafting compelling narratives showing deep candidate-company alignment.
+            **Goal:** Generate a persuasive **FIRST DRAFT** cover letter (approx. 300-450 words) for `{name}` applying to `{jd_title}` at `{jd_company}`. The letter must demonstrate genuine interest based on specific research and connect the candidate's value directly to the company's context and goals.
+
+            **Instructions for Cover Letter Draft:**
+            1.  **Hook:** Start with a strong opening connecting `{name}`'s core value proposition to the primary need of the `{jd_title}` role.
+            2.  **Demonstrate Researched Interest (CRITICAL):**
+                * Go beyond generic praise. Explicitly reference **at least one specific detail** from the 'External Company Research Findings' (e.g., recent news, a value, an aspect of the company overview). If external info is unavailable, use details from the 'Job Description Company Context'.
+                * **Crucially:** Explain *why* this specific detail resonates with the candidate or how their background connects to it. Show genuine interest derived from research. Example: "I was particularly interested by [Specific Detail Found] because my experience in [Candidate Skill/Achievement] directly relates to this aspect of your work/goals."
+            3.  **Evidence-Based Body:** Select 1-2 key achievements/experiences from the resume that strongly address the top ranked requirements. Quantify results where possible. **Explicitly link** how these achievements will contribute to `{jd_company}`'s goals, potentially referencing the company context (JD or external) again.
+            4.  **Keyword Integration:** Naturally incorporate relevant keywords from the JD, including 'Potentially Missing Keywords' if authentically supported by experience. Flag uncertainty: `[Note: Assumed relevance based on X]`. Do NOT force keywords unnaturally.
+            5.  **Tone and Culture:** Maintain the primary '{tone}'. If external research provided 'Inferred Culture Keywords', subtly reflect them (e.g., dynamic language for 'Fast-paced', collaboration focus for 'Collaborative') where appropriate.
+            6.  **Structure & Length:** Standard Cover Letter format (Intro, Body Paragraphs, Conclusion). Aim for 300-450 words.
+            7.  **Conclusion:** Reiterate enthusiasm and fit, strong call to action for next steps. Mention attached resume.
+            """
+            critique_criteria = f"""
+            **Critique Criteria (Output brief bullets ONLY):**
+            1.  **Researched Interest Depth:**
+                * Does the draft effectively incorporate specific details from external research (if available) or JD context?
+                * Is the connection between the candidate and the company's specifics convincing and non-generic? Does it sound researched?
+            2.  **Requirement Alignment & Evidence:** Does it clearly address top requirements with specific, quantified evidence? Is the link to company contribution clear?
+            3.  **Keyword Integration:** Are keywords used naturally? Are `[Note: ...]` flags used correctly?
+            4.  **Structure & Flow:** Is it well-organized (Intro/Body/Conclusion)? Does it flow logically?
+            5.  **Clarity, Conciseness, Tone:** Readability, word count (300-450)? Is '{tone}' consistent/professional? Does it subtly reflect culture hints?
+            6.  **Impact & Persuasiveness:** Does it effectively sell the candidate? Strong call to action?
+            """
+            refinement_instructions = f"""
+            * **Address Critique Directly:** Focus on fixing weaknesses identified, especially regarding researched interest depth and specificity of candidate-company links.
+            * **Strengthen Company Alignment:** If alignment was weak/generic, find *more specific* ways to connect skills/achievements to external research or JD context. Make the 'why this company' aspect crystal clear and authentic. Remove/justify `[Note: ...]` flags.
+            * **Enhance Evidence:** Ensure strongest, quantified achievements back up claims. Clarify *impact* for the company.
+            * **Refine Language:** Improve keyword integration, action verbs, clarity, conciseness, and ensure final '{tone}' is perfect. Smooth flow.
+            * **Format & Length:** Adhere to standard Cover Letter format, approx. 300-450 words.
+            """
+
+        # --- PROMPTS FOR RESUME (Strict ATS Optimization) ---
+        elif generation_type == TYPE_RESUME:
+            final_doc_type_name = "ATS-Optimized Resume"
+            draft_task_instructions = f"""
+            **Role:** Expert Resume Writer & ATS Optimization Specialist.
+            **Goal:** Generate a **FIRST DRAFT** ATS-Optimized Resume in Markdown format (approx. 1-2 pages if rendered). The resume MUST be easily parseable by Applicant Tracking Systems while also being compelling for human readers. Aim for a structure and keyword density likely to achieve a high ATS score (90%+ based on standard criteria).
+
+            **CRITICAL ATS OPTIMIZATION RULES (Follow Strictly):**
+            1.  **Standard Sections ONLY:** Use clear, standard Markdown H2 headings (`##`) for sections. MUST use headings like: `## Summary`, `## Skills`, `## Experience`, `## Education`. Optional standard sections: `## Projects`, `## Certifications`, `## Awards`. Do NOT invent custom section names.
+            2.  **Contact Information First:** Place contact info clearly at the top: Name (as H1 `#`), Phone, Email, LinkedIn URL (full URL), City, State.
+            3.  **Keyword Density Strategy:**
+                * Integrate keywords from 'Ranked Job Requirements' naturally throughout.
+                * Ensure **high density** of the **top 5-10 ranked requirements/keywords** within the `## Summary` and `## Skills` sections.
+                * Weave relevant keywords into `## Experience` bullet points. Avoid keyword stuffing; maintain readability.
+                * If incorporating 'Potentially Missing Keywords', ensure fit. Flag uncertainty: `[Note: Keyword X included based on Y]`.
+            4.  **ATS-Friendly Formatting ONLY:**
+                * Use **standard Markdown bullet points** (`-` or `*`) for lists (Experience/Projects).
+                * **AVOID:** Tables, columns, text boxes, images, icons, unusual symbols, complex headers/footers, graphs, charts, non-standard fonts.
+                * Use standard date formats consistently: "Month<y_bin_46> – Month<y_bin_46>" or "Month<y_bin_46> – Present". Example: "May 2020 – Present".
+            5.  **Clear Skills Section:** Format `## Skills` clearly, group by category (e.g., "Programming Languages:", "Tools:", "Methodologies:"). Use comma-separated lists or bullets under categories.
+            6.  **Action Verbs & Quantification (Experience):** Start experience bullets with strong action verbs. Include quantifiable results (%, $, #) using achievement data or resume text.
+            7.  **Conciseness:** Be clear and concise. Avoid jargon unless required. Keep bullets focused.
+
+            **Task:** Generate the ATS-Optimized Resume draft adhering to ALL rules above.
+            """
+            critique_criteria = f"""
+            **ATS & Content Critique Criteria (Output brief bullets ONLY):**
+            1.  **ATS Structure & Formatting:**
+                * **Sections:** Uses ONLY standard H2 headings (`## Summary`, etc.)?
+                * **Formatting:** Strict standard Markdown bullets (`-`/`*`)? Consistent dates (Month YYYY – Month YYYY/Present)? Contact info clear/top? Avoids tables/columns/etc.?
+                * **Skills Section:** Clear, parseable format (categories/lists)?
+            2.  **Keyword Relevance & Density:**
+                * **Top Keywords:** Summary/Skills effectively include top 5-10 ranked keywords?
+                * **Integration:** Keywords naturally integrated in Experience? Not stuffed?
+                * **Missing Keywords:** 'Potentially Missing Keywords' handled well (integrated/flagged)?
+            3.  **Content Quality & Clarity:**
+                * **Experience:** Strong action verbs & quantification? Impact clear?
+                * **Summary:** Concise, tailored, highlights key qualifications?
+                * **Overall:** Clear, concise, professional (`{tone}`), error-free? Readability?
+            4.  **Requirement Alignment:** Content strongly evidences top job requirements?
+            """
+            refinement_instructions = f"""
+            * **Address ALL Critique Points:** Focus on feedback regarding ATS rules (structure, formatting, dates, keywords) and content quality.
+            * **Fix ATS Issues:** Correct any non-standard sections, formatting, dates, or unclear structures. Ensure strict adherence to ATS rules.
+            * **Optimize Keywords:** If density/relevance was weak, revise Summary/Skills/Experience to better incorporate top keywords naturally. Remove/justify `[Note: ...]` flags.
+            * **Improve Content:** Strengthen action verbs, quantification, clarity, and impact based on critique. Ensure strong requirement alignment.
+            * **Final Polish:** Ensure coherence, professionalism (`{tone}`), and zero errors.
+            """
+        else:
+             # Handle other types or raise an error for unsupported types
+             yield f"\n--- ERROR: Unsupported generation type '{generation_type}'. ---\n"
+             return
+
+
+        # --- Construct Full Prompts ---
+
+        base_context = f"""
         **Candidate:** {name} ({email})
         **Target Job:** {jd_title} at {jd_company}
-        **Company Context:** {company_context}
-        **Ranked Requirements:**\n{ranked_req_str}
-        **Parsed Resume Sections:**\n{resume_sections_str}
-        **Extracted Resume Achievements:** {json.dumps(extracted_achievements[:10])} [Sample]
+        **Ranked Job Requirements (Most Important First):**\n{ranked_req_str}
+        **Parsed Original Resume Sections (Truncated):**\n{resume_sections_str}
+        **Extracted Original Resume Achievements (Sample):** {achievements_sample_str}
         **Desired Tone:** {tone}
         **Potentially Missing Keywords:** {missing_keywords_str}
+        **Job Description Company Context:** {company_context_jd}
+        {external_company_prompt_section if generation_type == TYPE_COVER_LETTER else ""}
+        """ # Include external info only for Cover Letter context
 
-        **Task:** Generate **FIRST DRAFT** of a {generation_type} for ATS and humans.
-        1. Address top ranked requirements with strong evidence from resume sections/achievements.
-        2. Use strong action verbs & quantifiable results (leverage extracted achievements).
-        3. Incorporate 'Potentially Missing Keywords' naturally where supported by experience. **Do NOT invent skills.** Flag uncertainty: `[Note: Assumed relevance based on X]`.
-        4. {'Align with Company Context.' if generation_type != TYPE_RESUME else ''}
-        5. Adhere to '{tone}'.
-        **Format:** {'ATS-friendly Markdown (## Headings, bullets). Prioritize Summary, Skills, Experience, Education.' if generation_type == TYPE_RESUME else 'Standard Cover Letter (Intro, Body, Conclusion).'}
-        {'For COVER LETTER: Aim for approx 300-450 words.' if generation_type == TYPE_COVER_LETTER else ''}
+        draft_prompt = f"""
+        {base_context}
 
-        **Output ONLY the {generation_type} draft:**
+        {draft_task_instructions}
+
+        **Output ONLY the {final_doc_type_name} draft content:**
         """
 
         # --- 3. Generate Initial Draft ---
-        yield f"--- Generating initial {generation_type} draft... ---\n"
-        initial_draft = await _call_llm_async(draft_prompt, google_api_key, GENERATION_MODEL_NAME, 0.6)
-        if not initial_draft: raise ValueError("Initial draft generation failed.")
+        yield f"--- Generating initial {final_doc_type_name} draft... ---\n"
+        initial_draft = await _call_llm_async(draft_prompt, google_api_key, GENERATION_MODEL_NAME, 0.6) # Temp might vary by type
+        if not initial_draft:
+            yield f"\n--- ERROR: Initial {final_doc_type_name} draft generation failed or returned empty. ---\n"
+            # Attempt to get underlying error if possible (depends on _call_llm_async implementation)
+            # E.g., Check common_data for any earlier errors, or provide generic failure message.
+            # logging.error(...) # Log the failure
+            return # Stop generation
 
-        # --- 4. Critique Prompt (Enhanced) ---
+
+        # --- 4. Critique Prompt ---
         critique_prompt = f"""
+        **Critique Task:** Evaluate the draft's effectiveness based on the criteria below.
+
         **Target Job Requirements (Ranked):**\n{ranked_req_str}
         **Potentially Missing Keywords Attempted:** {missing_keywords_str}
-        **Initial {generation_type} Draft:**
+        {external_company_prompt_section if generation_type == TYPE_COVER_LETTER else ""} # Context for CL critique
+
+        **Initial {final_doc_type_name} Draft:**
         ---
         {initial_draft}
         ---
 
-        **Task:** Critique the draft based ONLY on these criteria:
-        1. **Requirement Alignment/Evidence:** Addresses top requirements with specific, quantified evidence?
-        2. **Keyword Integration:** Are JD keywords (incl. 'missing' ones) used naturally? Any awkwardness? Are `[Note: ...]` flags used appropriately?
-        3. **Action Verbs/Quantification:** Strong verbs? Quantified results present and effective?
-        4. **Clarity/Conciseness/Tone:** Readability, length (for CL), tone ('{tone}')?
-        5. **ATS Friendliness:** Structure, keyword usage.
-
-        **Output ONLY the critique points (brief bullets):**
+        {critique_criteria}
         """
 
         # --- 5. Generate Critique ---
-        yield f"\n--- Generating critique... ---\n"
-        critique = await _call_llm_async(critique_prompt, google_api_key, EXTRACTION_MODEL_NAME, 0.3)
-        if not critique: logging.warning("Critique empty."); critique = "No critique generated."
+        yield f"\n--- Generating critique for {final_doc_type_name}... ---\n"
+        critique = await _call_llm_async(critique_prompt, google_api_key, EXTRACTION_MODEL_NAME, 0.3) # Lower temp for focused critique
+        if not critique:
+            logging.warning(f"Critique generation for {final_doc_type_name} returned empty. Proceeding without refinement guidance.")
+            critique = "No specific critique generated." # Provide a neutral default
 
 
-        # --- 6. Refinement Prompt (Enhanced) ---
+        # --- 6. Refinement Prompt ---
         refinement_prompt = f"""
-        **Candidate:** {name} ({email})
-        **Target Job:** {jd_title} at {jd_company}
-        **Company Context:** {company_context}
-        **Ranked Requirements:**\n{ranked_req_str}
-        **Parsed Resume Sections:**\n{resume_sections_str}
-        **Extracted Resume Achievements:** {json.dumps(extracted_achievements[:10])} [Sample]
-        **Desired Tone:** {tone}
-        **Potentially Missing Keywords List:** {missing_keywords_str}
-        **Initial {generation_type} Draft:**
+        **Refinement Task:** Generate the **FINAL, REVISED** {final_doc_type_name} by meticulously addressing the critique and adhering to all instructions.
+
+        {base_context}
+
+        **Initial {final_doc_type_name} Draft:**
         ---
         {initial_draft}
         ---
@@ -566,49 +706,41 @@ async def generate_application_text_streamed(
         {critique}
         ---
 
-        **Task:** Generate the **FINAL, REVISED** {generation_type} by meticulously addressing the critique.
-        * Enhance requirement alignment using strong, specific, quantified evidence.
-        * Improve natural integration of relevant JD keywords (esp. 'missing' ones). **Remove/justify `[Note: ...]` flags.** Optimize action verbs.
-        * Ensure clarity, conciseness, '{tone}', and ATS-friendly structure/formatting.
-        {'For COVER LETTER: Maintain approx 300-450 words.' if generation_type == TYPE_COVER_LETTER else ''}
-        {'For RESUME: Ensure valid ATS-friendly Markdown with standard sections (## Summary, ## Skills, ## Experience using bullet points, ## Education). Use action verbs and quantify.' if generation_type == TYPE_RESUME else ''}
-        **Output ONLY the final {generation_type}. No extra commentary.**
+        **Revision Instructions:**
+        {refinement_instructions}
+
+        **Output ONLY the final revised {final_doc_type_name}. No extra commentary.**
         """
 
         # --- 7. Generate Final Version (Async Stream) ---
-        yield f"\n--- Generating final refined {generation_type}... ---\n"
-        # *** CORRECTED PART ***
-        # Await the call to get the async generator object first
+        yield f"\n--- Generating final refined {final_doc_type_name}... ---\n"
         final_stream_generator = await _call_llm_async(
             refinement_prompt, google_api_key, GENERATION_MODEL_NAME,
-            temperature=0.5, stream=True
+            temperature=0.5, stream=True # Slightly lower temp for refinement
         )
 
-        # Check if we got an async generator before iterating
+        # Stream the final output
         if hasattr(final_stream_generator, '__aiter__'):
-            try:
-                async for chunk in final_stream_generator:
-                     yield chunk
-            except Exception as stream_iter_err:
-                error_message = f"\n--- Error iterating through final stream: {stream_iter_err} ---"
-                logging.error(error_message, exc_info=True)
-                yield error_message
-        # Handle cases where _call_llm_async might not return a generator (e.g., error before streaming start)
+            async for chunk in final_stream_generator:
+                yield chunk
+        # Handle cases where streaming might fail or return non-generator
         elif isinstance(final_stream_generator, str):
-             error_message = f"\n--- ERROR: Expected stream generator, received string instead: {final_stream_generator[:100]}... ---"
+             error_message = f"\n--- ERROR: Expected stream, received string during final {final_doc_type_name} generation: {final_stream_generator[:100]}... ---"
              logging.error(error_message)
              yield error_message
         else:
-             error_message = f"\n--- ERROR: Unexpected return type ({type(final_stream_generator)}) for final stream ---"
+             error_message = f"\n--- ERROR: Unexpected return type ({type(final_stream_generator)}) for final {final_doc_type_name} stream. ---"
              logging.error(error_message)
              yield error_message
-        # *** END CORRECTION ***
 
     except Exception as e:
-        error_message = f"\n--- Error during {generation_type} Generation: {e} ---"
-        logging.error(f"Error in generate_application_text_streamed: {e}", exc_info=True)
+        error_message = f"\n--- Unexpected Error during {generation_type} Generation: {e} ---"
+        logging.error(f"Critical error in generate_application_text_streamed for {generation_type}: {e}", exc_info=True)
         yield error_message
-        if common_data: yield f"\nDebug Info (Prep Error): {common_data.get('error') or 'OK'}"
+        # Provide any available context from common_data if it exists
+        if common_data:
+            yield f"\nDebug Info (Prep Error): {common_data.get('error', 'None')}"
+            yield f"\nDebug Info (Ext Co Info Error): {common_data.get('external_company_info', {}).get('error', 'None')}"
 
 
 # --- Email Generator + Validator (Async) ---
