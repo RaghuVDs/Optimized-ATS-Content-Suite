@@ -269,12 +269,11 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
             # Remove characters in the C0 control character range (U+0000 to U+001F)
             # except for tab (\t), newline (\n), carriage return (\r), form feed (\f), backspace (\b)
             # Using regex to replace unwanted control chars with empty string
-            control_chars_pattern = r'[\x00-\x08\x0b\x0c\x0e-\x1f]'
+            control_chars_pattern = r'[\x00-\x08\x0b\x0c\x0e-\x1f\x80-\x9f]' # <-- EXPANDED RANGE
             cleaned_raw_json = re.sub(control_chars_pattern, '', raw_json)
-            # ***************************************
+            # ********************************
 
-            # Parse the CLEANED string
-            parsed_json = json.loads(cleaned_raw_json)
+            parsed_json = json.loads(cleaned_raw_json) # Try parsing the more thoroughly cleaned string
 
             # --- Validation (remains the same) ---
             if not isinstance(parsed_json, dict): raise ValueError("LLM did not return a dictionary.")
@@ -297,26 +296,32 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
             return {"sections": sections, "extracted_keywords": keywords, "achievements": achievements, "error": None}
 
         except json.JSONDecodeError as json_err:
-         # Log BOTH cleaned and original raw json snippets for comparison
-         logging.error(f"Failed to parse resume section/keyword JSON: {json_err}. Cleaned JSON Snippet (around error): '{cleaned_raw_json[max(0, json_err.pos-30):json_err.pos+30]}' Original Raw Snippet: '{raw_json[max(0, json_err.pos-30):json_err.pos+30]}...'") # Log snippet around error position
-         error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {json_err.pos}) even after cleaning." # Add 'after cleaning'
-         error_result["raw_response_snippet"] = raw_json[max(0, json_err.pos-50):json_err.pos+50] # Store snippet for potential display
-         return error_result
-        
-        except ValueError as val_err:
-             logging.error(f"Validation error for resume parsing JSON: {val_err}. Raw response: {response_text[:500]}...")
-             error_result["error"] = f"LLM response structure error: {val_err}"
-             # Fallback might need adjustment based on error
-             if "sections" not in locals() or not sections: error_result["sections"] = {"full_text": resume_content}
-             if "keywords" not in locals(): error_result["extracted_keywords"] = []
-             if "achievements" not in locals(): error_result["achievements"] = []
-             return error_result
+            # *** ENHANCED LOGGING ***
+            try:
+                problem_char = cleaned_raw_json[json_err.pos]
+                problem_char_code = ord(problem_char)
+                logging.error(
+                    f"Failed to parse resume section/keyword JSON: {json_err}. "
+                    f"Problematic character: '{problem_char}' (Code: {problem_char_code}, Hex: {hex(problem_char_code)}) at pos {json_err.pos}. "
+                    f"Cleaned JSON Snippet (around error): '{cleaned_raw_json[max(0, json_err.pos-30):json_err.pos+30]}' "
+                    f"Original Raw Snippet: '{raw_json[max(0, json_err.pos-30):json_err.pos+30]}...'"
+                )
+            except IndexError: # Error might be at the very end
+                 logging.error(
+                    f"Failed to parse resume section/keyword JSON: {json_err}. "
+                    f"Error position {json_err.pos} might be out of bounds or related to overall structure. "
+                    f"Cleaned JSON Snippet (end): '...{cleaned_raw_json[-60:]}' "
+                    f"Original Raw Snippet (end): '...{raw_json[-60:]}'"
+                 )
+            # **************************
+            error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {json_err.pos}) even after extended cleaning." # Updated message
+            error_result["raw_response_snippet"] = raw_json[max(0, json_err.pos-50):json_err.pos+50]
+            return error_result
 
     except Exception as e:
         logging.error(f"Error parsing advanced resume with LLM: {e}", exc_info=True)
         error_result["error"] = f"Advanced Resume Parsing Error: {e}"
         return error_result
-
 
 # --- Enhanced JD Extraction (including Company Context) ---
 async def _extract_structured_data_enhanced_jd(text: str, google_api_key: str) -> Dict[str, Any]:
