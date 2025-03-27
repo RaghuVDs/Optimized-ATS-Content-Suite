@@ -239,60 +239,61 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
             raw_json = re.sub(r',\s*([}\]])', r'\1', raw_json)
 
             # Control character cleaning (keep existing pattern for now, logging will guide changes)
-            control_chars_pattern = r'[\x00-\x08\x0b\x0c\x0e-\x1f\x80-\x9f]'
+            control_chars_pattern = r'[\x00-\x08\x09\x0b\x0c\x0e-\x1f\x7f-\x9f]' # Added \x09 (Tab) to the removal list
             cleaned_raw_json = re.sub(control_chars_pattern, '', raw_json)
+        
             # ********************************
+            try:
+                parsed_json = json.loads(cleaned_raw_json)
 
-            parsed_json = json.loads(cleaned_raw_json) # Try parsing the more thoroughly cleaned string
+                # --- Validation (remains the same) ---
+                if not isinstance(parsed_json, dict): raise ValueError("LLM did not return a dictionary.")
+                sections = parsed_json.get("sections"); keywords_raw = parsed_json.get("extracted_keywords"); achievements_raw = parsed_json.get("achievements")
+                if not isinstance(sections, dict): sections = {"full_text": resume_content}; logging.warning("Invalid 'sections' structure.")
+                if not isinstance(keywords_raw, list): keywords = []; logging.warning("Invalid 'extracted_keywords' structure.")
+                else: keywords = sorted(list(set([str(kw).lower().strip() for kw in keywords_raw if str(kw).strip()])))
+                if not isinstance(achievements_raw, list): achievements = []; logging.warning("Invalid 'achievements' structure.")
+                else: # Validate achievement structure
+                    achievements = []
+                    for item in achievements_raw:
+                        if isinstance(item, dict) and 'action_verb' in item:
+                            achievements.append({
+                                "action_verb": str(item.get("action_verb")).strip(),
+                                "quantifiable_result": str(item.get("quantifiable_result")).strip() if item.get("quantifiable_result") else None
+                            })
+                        else: logging.warning(f"Skipping invalid achievement item: {item}")
 
-            # --- Validation (remains the same) ---
-            if not isinstance(parsed_json, dict): raise ValueError("LLM did not return a dictionary.")
-            sections = parsed_json.get("sections"); keywords_raw = parsed_json.get("extracted_keywords"); achievements_raw = parsed_json.get("achievements")
-            if not isinstance(sections, dict): sections = {"full_text": resume_content}; logging.warning("Invalid 'sections' structure.")
-            if not isinstance(keywords_raw, list): keywords = []; logging.warning("Invalid 'extracted_keywords' structure.")
-            else: keywords = sorted(list(set([str(kw).lower().strip() for kw in keywords_raw if str(kw).strip()])))
-            if not isinstance(achievements_raw, list): achievements = []; logging.warning("Invalid 'achievements' structure.")
-            else: # Validate achievement structure
-                achievements = []
-                for item in achievements_raw:
-                     if isinstance(item, dict) and 'action_verb' in item:
-                         achievements.append({
-                             "action_verb": str(item.get("action_verb")).strip(),
-                             "quantifiable_result": str(item.get("quantifiable_result")).strip() if item.get("quantifiable_result") else None
-                         })
-                     else: logging.warning(f"Skipping invalid achievement item: {item}")
+                logging.info("Resume sections, keywords, and achievements parsed successfully.")
+                return {"sections": sections, "extracted_keywords": keywords, "achievements": achievements, "error": None}
 
-            logging.info("Resume sections, keywords, and achievements parsed successfully.")
-            return {"sections": sections, "extracted_keywords": keywords, "achievements": achievements, "error": None}
+            except json.JSONDecodeError as json_err:
+                # --- ENHANCED LOGGING TO IDENTIFY CHARACTER ---
+                err_pos = json_err.pos
+                err_msg = f"Failed to parse resume JSON: {json_err} at pos {err_pos}."
+                problem_char_info = "Could not identify problematic char (check pos validity or string length)."
+                snippet_info = f"Cleaned JSON Snippet (around error pos {err_pos}): '{cleaned_raw_json[max(0, err_pos-30):min(len(cleaned_raw_json), err_pos+30)]}'" # Safer slicing
 
-        except json.JSONDecodeError as json_err:
-            # --- ENHANCED LOGGING TO IDENTIFY CHARACTER ---
-            err_pos = json_err.pos
-            err_msg = f"Failed to parse resume JSON: {json_err} at pos {err_pos}."
-            problem_char_info = "Could not identify problematic char (check pos validity or string length)."
-            snippet_info = f"Cleaned JSON Snippet (around error pos {err_pos}): '{cleaned_raw_json[max(0, err_pos-30):min(len(cleaned_raw_json), err_pos+30)]}'" # Safer slicing
+                # Try to get the character and its code point
+                if 0 <= err_pos < len(cleaned_raw_json):
+                    try:
+                        problem_char = cleaned_raw_json[err_pos]
+                        problem_char_code = ord(problem_char)
+                        problem_char_info = f"Problematic character: '{repr(problem_char)}' (Unicode Code Point: {problem_char_code}, Hex: {hex(problem_char_code)})"
+                    except Exception as char_e:
+                        problem_char_info = f"Error accessing char at pos {err_pos}: {char_e}"
+                elif err_pos == len(cleaned_raw_json):
+                    problem_char_info = "Error occurred at the very end of the string."
 
-            # Try to get the character and its code point
-            if 0 <= err_pos < len(cleaned_raw_json):
-                try:
-                    problem_char = cleaned_raw_json[err_pos]
-                    problem_char_code = ord(problem_char)
-                    problem_char_info = f"Problematic character: '{repr(problem_char)}' (Unicode Code Point: {problem_char_code}, Hex: {hex(problem_char_code)})"
-                except Exception as char_e:
-                    problem_char_info = f"Error accessing char at pos {err_pos}: {char_e}"
-            elif err_pos == len(cleaned_raw_json):
-                problem_char_info = "Error occurred at the very end of the string."
+                # Log the detailed information
+                logging.error(f"{err_msg} {problem_char_info}. {snippet_info}")
+                # Optionally log more context if the error persists and the snippet isn't enough
+                # logging.debug(f"Full cleaned JSON attempt that failed: {cleaned_raw_json}")
+                # --- END ENHANCED LOGGING ---
 
-            # Log the detailed information
-            logging.error(f"{err_msg} {problem_char_info}. {snippet_info}")
-            # Optionally log more context if the error persists and the snippet isn't enough
-            # logging.debug(f"Full cleaned JSON attempt that failed: {cleaned_raw_json}")
-            # --- END ENHANCED LOGGING ---
-
-            # Update the error result for the app
-            error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {err_pos}) even after cleaning. {problem_char_info}"
-            error_result["raw_response_snippet"] = cleaned_raw_json[max(0, err_pos-50):min(len(cleaned_raw_json), err_pos+50)] # Safer slicing
-            return error_result
+                # Update the error result for the app
+                error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {err_pos}) even after cleaning. {problem_char_info}"
+                error_result["raw_response_snippet"] = cleaned_raw_json[max(0, err_pos-50):min(len(cleaned_raw_json), err_pos+50)] # Safer slicing
+                return error_result
 
         except Exception as e_inner: # Catch other potential errors during parsing/validation
             logging.error(f"Inner error during resume JSON processing: {e_inner}", exc_info=True)
