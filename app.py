@@ -15,17 +15,18 @@ import textstat # Import textstat for readability
 # UPDATE THIS PATH if your default resume is located elsewhere
 DEFAULT_RESUME_TXT_PATH = "default_resume.txt"
 
-def main():
-    # --- Page Configuration ---
-    st.set_page_config(
-        page_title="Hyper-Optimized ATS Suite Generator",
-        page_icon="🏆",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
+# --- Page Configuration ---
+st.set_page_config(
+page_title="Hyper-Optimized ATS Suite Generator",
+page_icon="🏆",
+layout="wide",
+initial_sidebar_state="expanded",
+)
 
-    # --- Logging Setup ---
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [App] %(message)s')
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [App] %(message)s')
+
+def main():
 
     # --- Helper Functions ---
     def get_api_key():
