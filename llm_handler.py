@@ -588,6 +588,7 @@ async def generate_application_text_streamed(
             2.  **Contact Information First:** Place contact info clearly at the top: Name (as H1 `#`), Phone, Email, LinkedIn URL (full URL), City, State.
             3.  **Keyword Density Strategy:**
                 * Integrate keywords from 'Ranked Job Requirements' naturally throughout.
+                * **CRITICAL SUMMARY LENGTH:** The `## Summary` section **MUST** be **ABSOLUTELY NO MORE THAN 2 sentences**. Aim for 1 sentence if possible, 2 sentences is the **HARD MAXIMUM**. This length constraint is **MORE IMPORTANT** than trying to stuff many keywords.
                 * The `## Summary` section MUST be **strictly 1 to 2 sentences long**. It should concisely highlight the candidate's most relevant qualifications for this specific role (`{jd_title}`) and incorporate several top-ranked keywords, potentially including a key soft skill if highly relevant. # <--- ADDED LENGTH CONSTRAINT HERE
                 * Ensure **high density** of the **top 5-10 ranked requirements/keywords (technical and soft)** within the `## Summary` (within the 1-2 sentences) and `## Skills` sections. # <--- Adjusted wording
                 * Weave relevant keywords into `## Experience` bullet points. Avoid keyword stuffing; maintain readability.
@@ -596,13 +597,22 @@ async def generate_application_text_streamed(
                 * Use **standard Markdown bullet points** (`-` or `*`) for lists (Experience/Projects).
                 * **AVOID:** Tables, columns, text boxes, images, icons, unusual symbols, complex headers/footers, graphs, charts, non-standard fonts.
                 * Use standard date formats consistently: "Month<y_bin_46> – Month<y_bin_46>" or "Month<y_bin_46> – Present". Example: "May 2020 – Present".
-            5.  **Clear Skills Section (Include Soft Skills):** Format `## Skills` clearly, group by category (e.g., "Programming Languages:", "Tools:", "Methodologies:"). Use comma-separated lists or bullets under categories.
+            5.  **Clear Skills Section (Include Soft Skills):** Format the `## Skills` section clearly. **Each skill category MUST start with a standard Markdown bullet (`* `) followed immediately by the bolded category name** (e.g., `* **Programming Languages:**`). After the category name, list the specific skills (comma-separated on the same line is preferred for ATS parsing, but nested bullets are acceptable). Group skills logically. Include relevant soft skills as a category if appropriate.
+                **Crucially, follow this EXACT format example for categories:**
+                ```markdown
+                ## Skills
+                * **Programming Languages:** Python, Java, C++
+                * **Tools & Technologies:** Docker, Kubernetes, AWS, Git
+                * **Methodologies:** Agile, Scrum
+                * **Certifications:** [List certifications here if not in own section]
+                * **Soft Skills:** Communication, Teamwork, Problem-Solving
+                ```
             6.  **Action Verbs & Quantification (Experience):** Start experience bullets with strong action verbs. Include quantifiable results (%, $, #) using achievement data or resume text.
                 * **Crucially, integrate and demonstrate soft skills from the JD requirements within these bullet points.** Show, don't just tell. (e.g., Instead of 'Good communication', write 'Presented project findings to cross-functional teams weekly'). Use the context of achievements to imply skills like leadership, teamwork, problem-solving.
 
             7.  **Conciseness:** Be clear and concise. Avoid jargon unless required. Keep bullets focused.
 
-            **Task:** Generate the ATS-Optimized Resume draft adhering to ALL rules above.
+            **Task:** Generate the ATS-Optimized Resume draft adhering to ALL rules above.**ESPECIALLY the 1-2 sentence limit for the `## Summary` section.**
             """
             critique_criteria = f"""
             **ATS & Content Critique Criteria (Output brief bullets ONLY):**
@@ -617,6 +627,7 @@ async def generate_application_text_streamed(
                 * **Missing Keywords:** 'Potentially Missing Keywords' handled well (integrated/flagged)?
             3.  **Content Quality & Clarity:**
                 * **Experience:** Strong action verbs & quantification? Impact clear? **Are soft skills effectively demonstrated within experience bullets?** 
+                * **SUMMARY SENTENCE COUNT (CRITICAL):** How many sentences is the `## Summary`? (Provide number). Is it **STRICTLY 1 or 2 sentences**? (Yes/No)
                 * **Summary:** Concise, tailored, highlights key qualifications? Is it concise and tailored, **strictly adhering to the 1-2 sentence limit**? Does it highlight key qualifications and top keywords effectively within that limit?
                 * **Overall:** Clear, concise, professional (`{tone}`), error-free? Readability?
             4.  **Requirement Alignment:** Content strongly evidences top job requirements?
@@ -626,6 +637,7 @@ async def generate_application_text_streamed(
             * **Fix ATS Issues:** Correct any non-standard sections, formatting, dates, or unclear structures. Ensure strict adherence to ATS rules.
             * **Optimize Keywords:** If density/relevance was weak, revise Summary/Skills/Experience to better incorporate top keywords naturally. Remove/justify `[Note: ...]` flags.
             * **Improve Content & Soft Skills:** Strengthen action verbs, quantification, clarity, and impact. **Ensure the `## Summary` section is strictly 1-2 sentences, concise, tailored, and includes top keywords, addressing any critique points about its length or content.**
+            * **MANDATORY SUMMARY LENGTH CORRECTION:** If the critique indicated the `## Summary` has more than 2 sentences, **YOU MUST shorten it to 1-2 sentences MAXIMUM**. Be ruthless in cutting content to meet this limit, retaining only the absolute most essential hook and critical keyword(s).
             * **Final Polish:** Ensure coherence, professionalism (`{tone}`), and zero errors.
             """
         else:
