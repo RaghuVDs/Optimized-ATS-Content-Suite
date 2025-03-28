@@ -315,7 +315,7 @@ async def _extract_structured_data_enhanced_jd(text: str, google_api_key: str) -
         "location": "string", "summary": "string (1-2 sentence role objective)",
         "company_values_mission_challenges": "string (Brief notes on company culture, goals, or challenges mentioned)"
     }
-    instructions = "Extract required fields. For 'key_skills_requirements', list distinct technical and soft skills, tools, platforms, and experience duration (e.g., '5+ years'). For 'company_values_mission_challenges', capture phrases related to company culture, goals, values, or specific problems they are trying to solve."
+    instructions = "Extract required fields. For 'key_skills_requirements', list distinct technical skills, tools, platforms, experience duration AND **explicitly mentioned soft skills** (e.g., communication, teamwork, leadership). For 'company_values_mission_challenges', capture phrases related to company culture, goals, values, or specific problems they are trying to solve."
     prompt = f"""
     Analyze the following Job Description and extract information according to the schema.
     Return ONLY a valid JSON object. Use null if information is not found.
@@ -396,28 +396,41 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
     }
     task_errors = []
     try:
-        # Concurrently run enhanced JD extraction and enhanced Resume parsing
-        tasks = {
-            "jd_extraction": _extract_structured_data_enhanced_jd(job_description, google_api_key),
-            "resume_parsing_advanced": parse_resume_advanced_llm(resume_content, google_api_key),
-        }
-        task_results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        result_map = dict(zip(tasks.keys(), task_results))
+        # --- Replace gather with sequential calls ---
+        logging.info("Running JD Extraction sequentially...")
+        jd_res = await _extract_structured_data_enhanced_jd(job_description, google_api_key)
+        logging.info("Running Resume Parsing sequentially...")
+        resume_res = await parse_resume_advanced_llm(resume_content, google_api_key)
+        # --- End Replacement ---
 
+        # --- Process results directly ---
         # Process JD Extraction results
-        jd_res = result_map.get("jd_extraction")
-        if isinstance(jd_res, Exception): task_errors.append(f"JD Extraction failed: {jd_res}")
-        elif jd_res.get("error"): task_errors.append(f"JD Extraction error: {jd_res['error']}")
-        else: results["jd_data"] = jd_res.get("data", {})
+        if isinstance(jd_res, Exception): # Adjust if function returns error dict instead of raising
+            task_errors.append(f"JD Extraction failed: {jd_res}")
+            results["jd_data"] = {} # Ensure default structure on error
+        elif isinstance(jd_res, dict) and jd_res.get("error"):
+             task_errors.append(f"JD Extraction error: {jd_res['error']}")
+             results["jd_data"] = {}
+        elif isinstance(jd_res, dict):
+             results["jd_data"] = jd_res.get("data", {})
 
         # Process Resume Parsing results
-        resume_res = result_map.get("resume_parsing_advanced")
-        if isinstance(resume_res, Exception): task_errors.append(f"Resume Parsing failed: {resume_res}")
-        elif resume_res.get("error"): task_errors.append(f"Resume Parsing error: {resume_res['error']}")
-        else:
-            results["resume_sections"] = resume_res.get("sections", {"full_text": resume_content})
-            results["resume_keywords"] = resume_res.get("extracted_keywords", [])
-            results["resume_achievements"] = resume_res.get("achievements", [])
+        if isinstance(resume_res, Exception): # Adjust if function returns error dict instead of raising
+            task_errors.append(f"Resume Parsing failed: {resume_res}")
+            # Ensure default structure
+            results["resume_sections"] = {"full_text": resume_content}
+            results["resume_keywords"] = []
+            results["resume_achievements"] = []
+        elif isinstance(resume_res, dict) and resume_res.get("error"):
+             task_errors.append(f"Resume Parsing error: {resume_res['error']}")
+             results["resume_sections"] = resume_res.get("sections", {"full_text": resume_content}) # Keep sections even on error if possible
+             results["resume_keywords"] = []
+             results["resume_achievements"] = []
+        elif isinstance(resume_res, dict):
+             results["resume_sections"] = resume_res.get("sections", {"full_text": resume_content})
+             results["resume_keywords"] = resume_res.get("extracted_keywords", [])
+             results["resume_achievements"] = resume_res.get("achievements", [])
+        # --- End processing results ---
 
         # Rank JD requirements if successfully extracted
         extracted_requirements = results.get("jd_data", {}).get("key_skills_requirements", [])
@@ -575,16 +588,18 @@ async def generate_application_text_streamed(
             2.  **Contact Information First:** Place contact info clearly at the top: Name (as H1 `#`), Phone, Email, LinkedIn URL (full URL), City, State.
             3.  **Keyword Density Strategy:**
                 * Integrate keywords from 'Ranked Job Requirements' naturally throughout.
-                * The `## Summary` section MUST be **strictly 1 to 2 sentences long**. It should concisely highlight the candidate's most relevant qualifications for this specific role (`{jd_title}`) and incorporate several top-ranked keywords. # <--- ADDED LENGTH CONSTRAINT HERE
-                * Ensure **high density** of the **top 5-10 ranked requirements/keywords** within the `## Summary` (within the 1-2 sentences) and `## Skills` sections. # <--- Adjusted wording
+                * The `## Summary` section MUST be **strictly 1 to 2 sentences long**. It should concisely highlight the candidate's most relevant qualifications for this specific role (`{jd_title}`) and incorporate several top-ranked keywords, potentially including a key soft skill if highly relevant. # <--- ADDED LENGTH CONSTRAINT HERE
+                * Ensure **high density** of the **top 5-10 ranked requirements/keywords (technical and soft)** within the `## Summary` (within the 1-2 sentences) and `## Skills` sections. # <--- Adjusted wording
                 * Weave relevant keywords into `## Experience` bullet points. Avoid keyword stuffing; maintain readability.
                 * If incorporating 'Potentially Missing Keywords', ensure fit. Flag uncertainty: `[Note: Keyword X included based on Y]`.
             4.  **ATS-Friendly Formatting ONLY:**
                 * Use **standard Markdown bullet points** (`-` or `*`) for lists (Experience/Projects).
                 * **AVOID:** Tables, columns, text boxes, images, icons, unusual symbols, complex headers/footers, graphs, charts, non-standard fonts.
                 * Use standard date formats consistently: "Month<y_bin_46> – Month<y_bin_46>" or "Month<y_bin_46> – Present". Example: "May 2020 – Present".
-            5.  **Clear Skills Section:** Format `## Skills` clearly, group by category (e.g., "Programming Languages:", "Tools:", "Methodologies:"). Use comma-separated lists or bullets under categories.
+            5.  **Clear Skills Section (Include Soft Skills):** Format `## Skills` clearly, group by category (e.g., "Programming Languages:", "Tools:", "Methodologies:"). Use comma-separated lists or bullets under categories.
             6.  **Action Verbs & Quantification (Experience):** Start experience bullets with strong action verbs. Include quantifiable results (%, $, #) using achievement data or resume text.
+                * **Crucially, integrate and demonstrate soft skills from the JD requirements within these bullet points.** Show, don't just tell. (e.g., Instead of 'Good communication', write 'Presented project findings to cross-functional teams weekly'). Use the context of achievements to imply skills like leadership, teamwork, problem-solving.
+
             7.  **Conciseness:** Be clear and concise. Avoid jargon unless required. Keep bullets focused.
 
             **Task:** Generate the ATS-Optimized Resume draft adhering to ALL rules above.
@@ -596,11 +611,12 @@ async def generate_application_text_streamed(
                 * **Formatting:** Strict standard Markdown bullets (`-`/`*`)? Consistent dates (Month YYYY – Month YYYY/Present)? Contact info clear/top? Avoids tables/columns/etc.?
                 * **Skills Section:** Clear, parseable format (categories/lists)?
             2.  **Keyword Relevance & Density:**
-                * **Top Keywords:** Summary/Skills effectively include top 5-10 ranked keywords?
+                * **Top Keywords:** Summary/Skills effectively include top 10-15 ranked keywords (technical AND soft)?
+                * **Soft Skill Keywords:** Are relevant soft skills from the JD included (e.g., in Skills section or Summary)?
                 * **Integration:** Keywords naturally integrated in Experience? Not stuffed?
                 * **Missing Keywords:** 'Potentially Missing Keywords' handled well (integrated/flagged)?
             3.  **Content Quality & Clarity:**
-                * **Experience:** Strong action verbs & quantification? Impact clear?
+                * **Experience:** Strong action verbs & quantification? Impact clear? **Are soft skills effectively demonstrated within experience bullets?** 
                 * **Summary:** Concise, tailored, highlights key qualifications? Is it concise and tailored, **strictly adhering to the 1-2 sentence limit**? Does it highlight key qualifications and top keywords effectively within that limit?
                 * **Overall:** Clear, concise, professional (`{tone}`), error-free? Readability?
             4.  **Requirement Alignment:** Content strongly evidences top job requirements?
@@ -609,7 +625,7 @@ async def generate_application_text_streamed(
             * **Address ALL Critique Points:** Focus on feedback regarding ATS rules (structure, formatting, dates, keywords) and content quality.
             * **Fix ATS Issues:** Correct any non-standard sections, formatting, dates, or unclear structures. Ensure strict adherence to ATS rules.
             * **Optimize Keywords:** If density/relevance was weak, revise Summary/Skills/Experience to better incorporate top keywords naturally. Remove/justify `[Note: ...]` flags.
-            * **Improve Content:** Strengthen action verbs, quantification, clarity, and impact. **Ensure the `## Summary` section is strictly 1-2 sentences, concise, tailored, and includes top keywords, addressing any critique points about its length or content.**
+            * **Improve Content & Soft Skills:** Strengthen action verbs, quantification, clarity, and impact. **Ensure the `## Summary` section is strictly 1-2 sentences, concise, tailored, and includes top keywords, addressing any critique points about its length or content.**
             * **Final Polish:** Ensure coherence, professionalism (`{tone}`), and zero errors.
             """
         else:
