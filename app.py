@@ -323,88 +323,125 @@ def main():
         # -- End Validation --
 
         # --- Define and Execute Main Async Orchestration ---
+        #--- [COMPLETE CODE FOR CORRECTED async_main FUNCTION] ---
         async def async_main():
             prep_placeholder = st.empty()
-            prep_data = {}
-            genai_configured_this_run = False
+            prep_data = {} # Initialize prep_data for this run
+
             try:
+                # --- Configure API Key ---
                 if google_api_key:
                     try:
-                        # Configure only once per execution of async_main
-                        # Check a more reliable attribute or simply configure every time
-                        # Let's try configuring every time within the run, safe due to idempotency
                         genai.configure(api_key=google_api_key)
-                        genai_configured_this_run = True
                         logging.info("Google GenAI configured within async_main.")
-
                     except Exception as config_e:
                         st.error(f"Failed to configure Google GenAI: {config_e}")
                         logging.error(f"Failed to configure Google GenAI in async_main: {config_e}", exc_info=True)
                         prep_placeholder.empty()
                         return # Stop if configuration fails
                 else:
-                    # This case should be caught by validation_passed, but double-check
                     st.error("API Key missing, cannot configure Google GenAI.")
                     prep_placeholder.empty()
                     return
-                # --- Run Data Prep Only If Needed ---
+
+                # --- Run Data Prep Only If Needed (and only ONCE) ---
                 needs_prep = gen_resume or gen_cover_letter or gen_email or gen_linkedin
                 if needs_prep:
                     prep_placeholder.info("⚙️ Preparing & analyzing inputs...")
-                    # Pass api_key down, although configure should have set it globally for the lib instance
+                    # Call data prep ONCE here
                     prep_data = await llm_handler._prepare_common_data(job_desc, final_resume_content, google_api_key)
-                    st.session_state.prep_data = prep_data
+                    st.session_state.prep_data = prep_data # Store result in session state
                     prep_placeholder.empty()
 
-                    if prep_data.get("error"):
-                        st.error(f"Data Preparation Failed: {prep_data['error']}. Cannot generate documents.")
-                        logging.error(f"Data Preparation Failed: {prep_data['error']}")
-                        return # Stop async execution
-                    if prep_data.get("warning"): st.warning(prep_data["warning"]) # Show non-fatal warnings
+                    # Check for critical errors from prep before proceeding
+                    prep_error = prep_data.get("error")
+                    if prep_error:
+                         # Determine if error is fatal or just warning
+                         is_fatal_error = False
+                         errors = prep_error.split('; ')
+                         fatal_keywords = ["failed", "unavailable", "missing", "exception", "critical"]
+                         # Treat as fatal if any error contains fatal keywords AND is not explicitly a warning
+                         if any(fk in e.lower() for e in errors for fk in fatal_keywords if "warning" not in e.lower()):
+                              is_fatal_error = True
 
-                    # Store and Display Missing Keywords
+                         if is_fatal_error:
+                              st.error(f"Data Preparation Failed: {prep_error}. Cannot generate documents.")
+                              logging.error(f"Data Preparation Failed: {prep_error}")
+                              # Display missing keywords info even if prep failed but produced keywords
+                              st.session_state.missing_keywords_identified = prep_data.get("missing_keywords_from_resume", [])
+                              if st.session_state.missing_keywords_identified:
+                                   st.warning(f"Data prep failed, but identified potential missing keywords: `{', '.join(st.session_state.missing_keywords_identified)}`")
+                              return # Stop async execution
+                         else: # Treat as warnings
+                              st.warning(f"Data Preparation Warning: {prep_error}. Attempting generation...")
+
+
+                    # Store and Display Missing Keywords (always do this after prep attempt)
                     st.session_state.missing_keywords_identified = prep_data.get("missing_keywords_from_resume", [])
-                    if st.session_state.missing_keywords_identified:
-                        st.info(f"JD keywords potentially missing: `{', '.join(st.session_state.missing_keywords_identified)}` (Attempting incorporation).")
-                    else:
-                        st.success("✅ Input analysis complete. No specific missing resume keywords targeted.", icon="🔍")
-                    await asyncio.sleep(0.5) # Shorter delay for user to see message
-                else:
-                    prep_placeholder.empty() # Remove placeholder if no prep needed
+                    if not prep_error: # Only show success/info message if no errors/warnings
+                         if st.session_state.missing_keywords_identified:
+                              st.info(f"JD keywords potentially missing: `{', '.join(st.session_state.missing_keywords_identified)}` (Attempting incorporation).")
+                         else:
+                              st.success("✅ Input analysis complete. No specific missing resume keywords targeted.", icon="🔍")
+                         await asyncio.sleep(0.5) # Short delay for user to see message
 
+                else: # No prep needed
+                    prep_placeholder.empty()
 
                 # --- Create Async Tasks ---
                 tasks = {}
-                common_args_stream = { # Pass API key here if needed by handlers, which it is
-                    "name": candidate_name or "Candidate",
-                    "email": candidate_email or "candidate@example.com",
-                    "job_description": job_desc,
-                    "resume_content": final_resume_content,
-                    "google_api_key": google_api_key, # Make sure key is passed
-                    "tone": tone
-                }
+                # Check if prep is needed and was successful (or only had warnings) before creating tasks
+                # Allow proceeding even if prep_data has only warnings, but not fatal errors
+                allow_task_creation = True
+                if needs_prep:
+                    if not prep_data or prep_data.get("error") and is_fatal_error: # Check fatal error flag
+                         allow_task_creation = False
 
-                # Check if prep_data is valid BEFORE creating tasks needing it
-                prep_ok_for_dependent_tasks = needs_prep and prep_data and not prep_data.get("error")
-
-                if prep_ok_for_dependent_tasks:
-                    if gen_resume: tasks["Resume"] = asyncio.create_task(_collect_stream(llm_handler.generate_application_text_streamed(**common_args_stream, generation_type=llm_handler.TYPE_RESUME)))
-                    if gen_cover_letter: tasks["Cover Letter"] = asyncio.create_task(_collect_stream(llm_handler.generate_application_text_streamed(**common_args_stream, generation_type=llm_handler.TYPE_COVER_LETTER)))
+                if allow_task_creation:
+                    # *** Corrected Task Creation Calls ***
+                    if gen_resume:
+                        tasks["Resume"] = asyncio.create_task(_collect_stream(
+                            llm_handler.generate_application_text_streamed( # Use correct signature
+                                name=candidate_name or "Candidate",
+                                email=candidate_email or "candidate@example.com",
+                                common_data=prep_data, # Pass prepared data
+                                generation_type=llm_handler.TYPE_RESUME,
+                                google_api_key=google_api_key,
+                                tone=tone
+                            )
+                        ))
+                    if gen_cover_letter:
+                         tasks["Cover Letter"] = asyncio.create_task(_collect_stream(
+                            llm_handler.generate_application_text_streamed( # Use correct signature
+                                name=candidate_name or "Candidate",
+                                email=candidate_email or "candidate@example.com",
+                                common_data=prep_data, # Pass prepared data
+                                generation_type=llm_handler.TYPE_COVER_LETTER,
+                                google_api_key=google_api_key,
+                                tone=tone
+                            )
+                        ))
                     if gen_email:
+                         # generate_email_and_validate also needs updating in llm_handler
+                         # Assuming it's updated to take common_data:
                          tasks["Email"] = asyncio.create_task(
-                             llm_handler.generate_email_and_validate(
-                                 **common_args_stream,
-                                 email_recipient_type=email_recipient_type,
-                                 job_link=job_link or None
-                             )
-                         )
+                            llm_handler.generate_email_and_validate( # Use correct signature
+                                name=candidate_name or "Candidate",
+                                email=candidate_email or "candidate@example.com",
+                                common_data=prep_data, # Pass prepared data
+                                google_api_key=google_api_key,
+                                tone=tone,
+                                email_recipient_type=email_recipient_type,
+                                job_link=job_link or None
+                            )
+                        )
                     if gen_linkedin:
-                         # Ensure prep_data has necessary keys before accessing
+                         # generate_linkedin_message uses jd_data and resume_data from prep_data
                          jd_data_for_linkedin = prep_data.get("jd_data", {})
-                         resume_data_for_linkedin = prep_data # Pass full prep data which includes keywords etc.
+                         resume_data_for_linkedin = prep_data # Pass full prep data
                          tasks["LinkedIn Message"] = asyncio.create_task(
                              llm_handler.generate_linkedin_message(
-                                 name=common_args_stream["name"],
+                                 name=candidate_name or "Candidate",
                                  job_description_data=jd_data_for_linkedin,
                                  resume_data=resume_data_for_linkedin,
                                  google_api_key=google_api_key,
@@ -412,29 +449,22 @@ def main():
                                  connection_name=linkedin_connection_name or None
                              )
                          )
-                elif needs_prep: # Prep was needed but failed
-                     st.error("Cannot create generation tasks due to earlier data preparation error.")
-                     return # Already handled above, but defensive check
+                elif needs_prep: # Prep was needed but failed fatally
+                     # Error already shown above after prep call
+                     pass # Don't create tasks
 
                 # --- Run Tasks Concurrently ---
                 if tasks:
-                    # Pass api_key needed for potential validation tasks inside run_generation_tasks
-                    await run_generation_tasks(tasks, prep_data, google_api_key)
-                # else case handled by validation
-
-            # --- Run Tasks Concurrently ---
-                if tasks:
-                    # Pass api_key needed for validation tasks inside run_generation_tasks
                     await run_generation_tasks(tasks, prep_data, google_api_key)
                 elif not needs_prep:
-                     st.info("No content selected for generation.") # Or handle as needed
-                # else case (needs_prep was true but prep failed) is handled above
-
+                    st.info("No content selected for generation.")
+                # else: Prep needed but failed fatally, error already displayed
 
             except Exception as main_e:
-                prep_placeholder.empty() # Ensure placeholder is removed on error
                 st.error(f"An unexpected error occurred during asynchronous execution: {main_e}")
                 logging.exception("Error in async_main execution:")
+            finally:
+                 prep_placeholder.empty() # Ensure cleanup
 
 
         # --- Execute ---
@@ -442,7 +472,15 @@ def main():
             st.info("Initiating generation...")
             try:
                 asyncio.run(async_main()) # Run the orchestrator
-                st.success("✅ Generation process finished!", icon="🎉")
+                # Check if any task actually produced an error stored in session state
+                has_errors = any(res.get("error") for res in st.session_state.generation_results.values()) or \
+                             any(val.get("error") for val in st.session_state.validation_results.values())
+
+                if not has_errors:
+                     st.success("✅ Generation process finished!", icon="🎉")
+                else:
+                     st.warning("Generation process finished, but some errors occurred (see details above).", icon="⚠️")
+
             except Exception as e:
                 st.error(f"Error running the main async process: {e}")
                 logging.exception("Error calling asyncio.run(async_main):")

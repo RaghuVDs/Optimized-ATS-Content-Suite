@@ -8,17 +8,34 @@ Data professional with expertise in data engineering, business intelligence, and
 Work Experience
 
 Data Analyst, Fintech, Open Financial Technology Pvt. Ltd, Bengaluru, Karnataka, India                                           	    Mar 22 - Aug 23   
-Designed and implemented a Delta Lake on Azure Data Lake Storage (ADLS Gen2), enabling ACID transactions, schema enforcement, and time-travel capabilities for 1TB+ daily Payments data.
-Applied Z-ordering on high-cardinality columns to optimize data skipping, reducing query runtime by 15% for analytical workloads.
-Utilized Unity Catalog for centralized governance, enabling role-based access control for 8+ teams which improved data discovery.
-Built and optimized Delta Lake-compatible ETL pipelines on Databricks, leveraging features like auto-optimize and compaction to reduce processing time by 6 hours.
-Orchestrated data pipelines using Apache Airflow, integrating Delta Lake updates and reducing manual intervention.
-Maintained a hybrid architecture by syncing curated Delta Lake datasets to Snowflake, optimizing materialized views and star schemas to improve query performance by 20%.
-Optimized the database by creating indexes and partitioning large datasets, thereby reducing querying time for reporting and analysis, which enhanced overall data accessibility.
-Automated the analysis of product reviews using Python, NLP (Gemini, Hugging Face, Sentence Transformers), and machine learning (K-Means clustering) to extract key insights, visualize trends (Plotly), and drive product improvements.
-Performed ad-hoc funnel analysis in Tableau, identifying 35% KYC-related checkout drop-offs. Utilized A/B testing to optimize KYC methods, reducing drop-offs by 25%, decreasing churn by 10%, and increasing conversion rates.
-Embedded ARIMA models in Tableau, improving revenue forecasting accuracy by 15% and enabling proactive strategy adjustments.
-Designed and maintained 50+ interactive dashboards in Tableau and Metabase, utilizing LOD calculations, parameter-driven filters, and complex joins to meet dynamic business needs. Implemented row-level security in Tableau, ensuring GDPR compliance and data privacy across 8+ user groups.
+Designed and implemented a Delta Lake on Azure Data Lake Storage (ADLS Gen2) for 1TB+ daily payments data, enabling ACID transactions, schema enforcement, and time-travel capabilities.
+Engineered and optimized PySpark ETL pipelines on Azure Databricks, processing 1TB+ daily transaction data and reducing processing time by 6 hours for near real-time analytics.
+Applied Z-ordering and utilized Delta Lake features like auto-optimize and compaction to reduce query runtime by 15% and enhance ETL efficiency.
+Utilized Unity Catalog on Azure for centralized data governance, implementing role-based access control for 8+ teams and improving data discovery.
+Orchestrated complex data pipelines using Apache Airflow, automating Delta Lake updates and ETL workflows, reducing manual intervention by 40%.
+Maintained a hybrid data architecture by syncing curated Delta Lake datasets to Snowflake, optimizing materialized views and star schemas to improve query performance by 20%.
+Created and managed Snowflake database objects including tables, views, materialized views, sequences, and stored procedures.
+Implemented robust PySpark-based data quality checks on Azure Databricks, ensuring high accuracy for critical financial data and reducing manual validation efforts.
+Optimized database performance by creating indexes and partitioning large datasets, reducing query time by up to 30% for reporting and analysis.
+Contributed to the implementation of a secure and scalable data lake on ADLS Gen2, ensuring compliance with industry regulations.
+Developed a Random Forest Classifier in PySpark to analyze payment history and credit scores, increasing fraud detection accuracy by 25% and streamlining lending decisions by up to 80%.
+Built an ARIMA time-series forecasting model, integrating it into Tableau dashboards, which improved revenue prediction accuracy by 15% and enabled proactive pricing adjustments.
+Identified 5 high-value customer segments using K-Means clustering on transaction data, enabling personalized marketing strategies that boosted engagement by 43%.
+Automated the analysis of product reviews using Python, NLP (Gemini, Hugging Face, Sentence Transformers), and K-Means clustering, visualizing trends with Plotly to drive product improvements.
+Built a machine learning regression model for credit card enhancement, increasing loan approvals by 38% and decreasing bad debt by 21%.
+Designed and maintained 50+ interactive dashboards in Tableau and Metabase, utilizing LOD calculations, parameter-driven filters, complex joins, and visualizing KPIs (CAC, GTV, Churn) to meet dynamic business needs.
+Implemented row-level security in Tableau across 8+ user groups, ensuring GDPR compliance and data privacy.
+Performed funnel analysis to identify critical drop-offs in signup and KYC processes (initially 35%-65%), leading to A/B testing and workflow optimizations that reduced attrition/drop-offs significantly (by 25% - 65%) and increased conversion rates.
+Analyzed customer behavior across 250,000+ monthly active users using SQL and Python, leading to initiatives that increased app engagement by up to 80% (or 2x).
+Leveraged SQL to analyze over 100M data points, uncovering key insights into customer churn and renewal rates.
+Drove customer retention by optimizing workflows via A/B testing, reducing drop-offs by 25% and improving satisfaction scores.
+Developed Python scripts to automate weekly, monthly, and quarterly KPI reports, reducing manual reporting efforts by 15 hours weekly (or 25-40%).
+Partnered with product and business teams to align ETL pipelines and reporting with strategic KPIs, improving data accessibility and decision-making.
+Enhanced database query efficiency by 20-30% through advanced SQL techniques and optimization.
+Boosted sales efficiency by 10-18% through targeted SQL and Python analyses supporting revenue growth.
+Implemented a real-time alert system in Metabase to flag suspicious merchant IP addresses, reducing onboarding fraud risk by 2%.
+Automated merchant billing processes using Python, improving accuracy and reducing manual effort.
+
 
 Associate Data Analyst, XLDynamics Pvt. Ltd, Mysore, Karnataka, India                                                                     Sept 20 - Mar 22
 Streamlined loan processing and data cleansing to a U.S. mortgage company using advanced Excel functions (LOOKUPs, INDEX MATCH, XNPV), Power Query and Power Pivot  reducing report time and enhancing analytical productivity.
