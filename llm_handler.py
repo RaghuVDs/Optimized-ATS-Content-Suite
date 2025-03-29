@@ -335,17 +335,26 @@ async def generate_linkedin_message(
 # --- [COMPLETE CODE FOR UPDATED FUNCTION] Enhanced Resume Parsing ---
 async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) -> Dict[str, Any]:
     """
-    Parses resume into sections, extracts keywords, and structured experience with bullets per job.
-    Returns dict containing 'sections', 'extracted_keywords', 'experience_structured', and 'error' (None on success).
+    Parses resume into sections, extracts keywords, structured experience,
+    and attempts to extract contact information.
+    Returns dict containing 'sections', 'extracted_keywords', 'experience_structured',
+    'contact_info', and 'error' (None on success).
     """
     prompt = f"""
-    Analyze the following resume text. Perform three main tasks:
+    Analyze the following resume text. Perform FOUR main tasks:
 
-    1.  **Parse Sections:** Divide the resume into logical sections based on standard headings (e.g., Summary, Skills, Experience, Education, Projects, Certifications, Awards). Use lowercase standardized keys for the output JSON (e.g., "summary", "skills", "experience_text", "education"). Preserve the original text content within each identified section. Group unclear sections under 'other'. Include a "full_text" key containing the entire original resume.
+    1.  **Extract Contact Information:** Identify and extract the primary contact details usually found at the top of the resume. Extract the following fields. If a field is not found, return null for that field.
+        * 'candidate_name': The full name of the candidate.
+        * 'candidate_email': The primary email address.
+        * 'candidate_phone': The primary phone number.
+        * 'candidate_linkedin': The URL for the LinkedIn profile, if present.
+        * 'candidate_location': The city and state/country mentioned (e.g., "Anytown, CA", "London, UK").
 
-    2.  **Extract Keywords:** Identify and extract a comprehensive list of specific technical skills (languages, frameworks, tools, platforms, databases), methodologies (Agile, Scrum), certifications, and relevant soft skills (communication, leadership, teamwork) mentioned anywhere in the resume. Output should be a list of unique strings, all lowercase.
+    2.  **Parse Sections:** Divide the resume into logical sections based on standard headings (e.g., Summary, Skills, Experience, Education, Projects, Certifications, Awards). Use lowercase standardized keys for the output JSON (e.g., "summary", "skills", "experience_text", "education"). Preserve the original text content within each identified section. Group unclear sections under 'other'. Include a "full_text" key containing the entire original resume.
 
-    3.  **Extract Structured Experience:** From the 'Experience' section ONLY, parse each distinct job entry listed. For each job, extract an object containing:
+    3.  **Extract Keywords:** Identify and extract a comprehensive list of specific technical skills (languages, frameworks, tools, platforms, databases), methodologies (Agile, Scrum), certifications, and relevant soft skills (communication, leadership, teamwork) mentioned anywhere in the resume. Output should be a list of unique strings, all lowercase.
+
+    4.  **Extract Structured Experience:** From the 'Experience' section ONLY, parse each distinct job entry listed. For each job, extract an object containing:
         * 'job_title': The job title string.
         * 'company': The company name string.
         * 'location': The location string (optional, can be null).
@@ -354,6 +363,13 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
 
     Return ONLY a valid JSON object matching this exact structure:
     {{
+        "contact_info": {{
+            "candidate_name": "...",
+            "candidate_email": "...",
+            "candidate_phone": "...",
+            "candidate_linkedin": "...",
+            "candidate_location": "..."
+        }},
         "sections": {{
             "full_text": "...",
             "summary": "...",
@@ -367,21 +383,9 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
             {{
                 "job_title": "Senior Widget Engineer",
                 "company": "Acme Corp",
-                "location": "Anytown, USA",
-                "dates": "Jan 2020 – Present",
-                "bullets": [
-                    "Led the design and development of the Widgetizer 3000.",
-                    "Increased widget production efficiency by 25% using Lean principles.",
-                    "Mentored junior engineers on widget best practices."
-                ]
+                // ... rest of job entry ...
+                "bullets": [ ... ]
             }},
-            {{ // Example of another job entry
-                "job_title": "Widget Engineer",
-                "company": "Beta Inc",
-                "location": "Otherville, USA",
-                "dates": "Jun 2018 – Dec 2019",
-                "bullets": ["Developed core widget components.", "Collaborated with product team."]
-            }}
             // ... other job entries parsed similarly
         ]
     }}
@@ -395,9 +399,10 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
     """
     # Default structure in case of errors
     error_result = {
+        "contact_info": {}, # Add default empty dict
         "sections": {"full_text": resume_content},
         "extracted_keywords": [],
-        "experience_structured": [], # Changed key
+        "experience_structured": [],
         "error": "Initialization error"
     }
     try:
@@ -405,7 +410,7 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
             prompt=prompt,
             api_key=google_api_key,
             model_name=EXTRACTION_MODEL_NAME,
-            temperature=0.1,
+            temperature=0.05, # Lower temp for extraction
             request_json=True
         )
 
@@ -416,6 +421,20 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
 
                 if not isinstance(parsed_json, dict):
                     raise ValueError("LLM did not return a dictionary.")
+
+                # --- Validate Contact Info ---
+                contact_info_raw = parsed_json.get("contact_info")
+                contact_info = {}
+                if isinstance(contact_info_raw, dict):
+                     contact_info["candidate_name"] = str(contact_info_raw.get("candidate_name", "")).strip() or None
+                     contact_info["candidate_email"] = str(contact_info_raw.get("candidate_email", "")).strip() or None
+                     contact_info["candidate_phone"] = str(contact_info_raw.get("candidate_phone", "")).strip() or None
+                     contact_info["candidate_linkedin"] = str(contact_info_raw.get("candidate_linkedin", "")).strip() or None
+                     contact_info["candidate_location"] = str(contact_info_raw.get("candidate_location", "")).strip() or None
+                     logging.info("Contact info extracted.")
+                else:
+                     logging.warning("Invalid or missing 'contact_info' structure in LLM response.")
+                     # Leave contact_info as empty dict
 
                 # --- Validate Sections ---
                 sections = parsed_json.get("sections")
@@ -451,16 +470,13 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                            'dates' in job_item and \
                            'bullets' in job_item and \
                            isinstance(job_item.get('bullets'), list):
-
-                            # Basic validation/cleaning of job item fields
                             valid_job = {
                                 "job_title": str(job_item.get("job_title", "")).strip(),
                                 "company": str(job_item.get("company", "")).strip(),
-                                "location": str(job_item.get("location", "")).strip() or None, # Store empty as None
+                                "location": str(job_item.get("location", "")).strip() or None,
                                 "dates": str(job_item.get("dates", "")).strip(),
                                 "bullets": [str(b).strip() for b in job_item['bullets'] if isinstance(b, str) and str(b).strip()]
                             }
-                            # Only add if essential fields are present
                             if valid_job["job_title"] and valid_job["company"] and valid_job["dates"]:
                                  experience_structured.append(valid_job)
                             else:
@@ -469,18 +485,20 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                             logging.warning(f"Skipping invalid job item structure: {job_item}")
 
                 # --- Success ---
-                logging.info("Resume sections, keywords, and structured experience parsed successfully.")
+                logging.info("Resume sections, keywords, structured experience, and contact info parsed.")
                 return {
+                    "contact_info": contact_info, # Add extracted contact info
                     "sections": sections,
                     "extracted_keywords": keywords,
-                    "experience_structured": experience_structured, # Return structured experience
+                    "experience_structured": experience_structured,
                     "error": None
                 }
 
             except json.JSONDecodeError as json_err:
-                err_pos = json_err.pos
+                # ... (keep existing JSON error handling - update error_result) ...
+                err_pos = json_err.pos; 
                 err_msg = f"Failed to parse resume JSON response: {json_err} at position {err_pos}."
-                problem_char_info = "Could not identify problematic character."
+                problem_char_info="Could not identify problematic character."
                 snippet_info = f"JSON Snippet (around pos {err_pos}): '{raw_json_string[max(0, err_pos-40):min(len(raw_json_string), err_pos+40)]}'"
                 if 0 <= err_pos < len(raw_json_string):
                     try:
@@ -491,30 +509,27 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                         problem_char_info = f"Error accessing character at position {err_pos}: {char_e}"
                 elif err_pos == len(raw_json_string):
                         problem_char_info = "Error occurred at the very end of the string (potentially incomplete JSON)."
+                # ... find char code ...
                 logging.error(f"{err_msg} {problem_char_info}. {snippet_info}")
                 error_result["error"] = f"Invalid JSON response for resume parsing: {json_err} (Pos: {err_pos}). {problem_char_info}"
                 error_result["raw_response_snippet"] = raw_json_string[max(0, err_pos-50):min(len(raw_json_string), err_pos+50)]
                 return error_result
-
-            except ValueError as val_err: # Catch validation errors raised within the try block
+            except ValueError as val_err:
                 logging.error(f"Validation error during resume JSON processing: {val_err}", exc_info=True)
                 error_result["error"] = f"Error validating parsed resume JSON structure: {val_err}"
-                error_result["raw_response_snippet"] = raw_json_string[:500] # Include snippet on validation error
+                error_result["raw_response_snippet"] = raw_json_string[:500]
                 return error_result
-
-            except Exception as e_inner: # Catch any other unexpected errors during processing
+            except Exception as e_inner:
                 logging.error(f"Unexpected error during resume JSON processing: {e_inner}", exc_info=True)
                 error_result["error"] = f"Unexpected error processing resume JSON structure: {e_inner}"
-                error_result["raw_response_snippet"] = raw_json_string[:500] # Include snippet
+                error_result["raw_response_snippet"] = raw_json_string[:500]
                 return error_result
         else:
-             # Handle case where LLM call did not return a string
              logging.error(f"Unexpected return type from _call_llm_async for resume parsing: {type(response_text)}")
              error_result["error"] = "Error: LLM call for resume parsing did not return text."
              return error_result
 
     except Exception as e:
-         # Handle Outer LLM Call Errors
          logging.error(f"Error during LLM call for advanced resume parsing: {e}", exc_info=True)
          error_result["error"] = f"Advanced Resume Parsing LLM Call Error: {e}"
          return error_result
@@ -1257,16 +1272,14 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
 
     return results
 
-# --- Generator with Multi-Turn Refinement & Enhanced Instructions (Async Stream) ---
-# --- [COMPLETE CODE FOR UPDATED FUNCTION] Generator with Multi-Turn Refinement ---
 async def generate_application_text_streamed(
-    name: str, email: str,
+    name: str, email: str, # Arguments from app.py act as FALLBACKS
     common_data: Dict[str, Any], # *** Takes pre-processed common_data ***
     generation_type: str, google_api_key: str, tone: str
 ) -> AsyncGenerator[str, None]:
     """
     Generates Resume or Cover Letter using a multi-turn refinement process (async stream).
-    Uses pre-processed data including filtered first-job bullets and relevant skills for resumes.
+    Uses pre-processed data including filtered bullets/skills and EXTRACTED contact info for resumes.
     """
     # NOTE: Assumes common_data is valid and contains necessary keys as verified by the caller (app.py)
     # Error handling for the prep step itself is done in the caller (_prepare_common_data)
@@ -1283,12 +1296,13 @@ async def generate_application_text_streamed(
 
         resume_data = common_data.get("resume_data", {})
         # Need sections and experience_structured for context building
-        # Also check filtered keywords for resume generation context
+        # Also check filtered keywords and contact info for resume generation context
         essential_resume_keys_present = (
              resume_data and
              isinstance(resume_data.get("sections"), dict) and
              resume_data.get("extracted_keywords") is not None and # Filtered list
-             resume_data.get("experience_structured") is not None # Contains filtered bullets
+             resume_data.get("experience_structured") is not None and # Contains filtered bullets
+             resume_data.get("contact_info") is not None # Check contact info exists
         )
         if not essential_resume_keys_present:
             yield "\n--- WARNING: Essential Resume data (Sections, Keywords, or Structured Experience) missing or invalid in provided common_data. Quality may be affected. ---\n"
@@ -1296,10 +1310,28 @@ async def generate_application_text_streamed(
             yield f"DEBUG: Sections Type: {type(resume_data.get('sections'))}\n"
             yield f"DEBUG: Extracted Keywords Type: {type(resume_data.get('extracted_keywords'))}\n"
             yield f"DEBUG: Experience Structured Type: {type(resume_data.get('experience_structured'))}\n"
+            yield f"DEBUG: Contact Info Type: {type(resume_data.get('contact_info'))}\n"
             # Allow continuation with warning, but generation might be poor
 
-        # --- Format Common Inputs for Prompts using common_data ---
+        # --- Format Common Inputs & Determine Final Contact Info ---
         yield "--- Formatting context for generation... ---\n"
+        # --- Get Extracted Contact Info (with fallback to arguments) ---
+        extracted_contact = resume_data.get("contact_info", {}) # Default to empty dict
+        # Prioritize extracted info, use args as fallback
+        final_name = extracted_contact.get("candidate_name") or name or "Candidate Name Missing"
+        final_email = extracted_contact.get("candidate_email") or email or "candidate.email@missing.com"
+        final_phone = extracted_contact.get("candidate_phone") or "[Your Phone Number]"
+        final_linkedin = extracted_contact.get("candidate_linkedin") or "[Your LinkedIn URL]"
+        final_location = extracted_contact.get("candidate_location") or "[Your City, State]"
+        # Construct contact line parts, filtering out placeholders if original was missing
+        contact_line_parts = [f"Email: {final_email}"]
+        if final_phone != "[Your Phone Number]": contact_line_parts.append(f"Phone: {final_phone}")
+        if final_linkedin != "[Your LinkedIn URL]": contact_line_parts.append(f"LinkedIn: {final_linkedin}")
+        if final_location != "[Your City, State]": contact_line_parts.append(final_location)
+        contact_line = " | ".join(contact_line_parts)
+        # --- --- --- --- --- --- --- --- --- --- --- ---
+
+        # Get other data
         resume_sections = resume_data.get("sections", {})
         relevant_resume_keywords = resume_data.get("extracted_keywords", []) # Filtered list
         experience_structured = resume_data.get("experience_structured", []) # Contains filtered bullets
@@ -1314,11 +1346,13 @@ async def generate_application_text_streamed(
             prompt_context_parts.append(f"**SUMMARY**\n{summary_text.strip()}")
 
         # Add *Filtered* Skills list (to be formatted by LLM later)
-        if relevant_resume_keywords:
+        if relevant_resume_keywords: # Check if the list is not empty after filtering
+            # Present the filtered list clearly for the LLM to categorize/format
             skills_list_str = "\n".join(f"- {skill}" for skill in relevant_resume_keywords)
             prompt_context_parts.append(f"**RELEVANT CANDIDATE SKILLS (Filtered for Job):**\n{skills_list_str}")
         else:
-            logging.info("No relevant skills identified after filtering, skipping skills context in prompt.")
+             logging.info("No relevant skills identified after filtering, skipping skills context in prompt.")
+
 
         # Add Structured Experience (with filtered bullets)
         if isinstance(experience_structured, list) and experience_structured:
@@ -1339,7 +1373,11 @@ async def generate_application_text_streamed(
         # Add other sections
         if isinstance(resume_sections, dict):
             for sec, content in resume_sections.items():
-                if sec not in ["full_text", "summary", "skills", "experience_text", "experience"] and content and isinstance(content, str) and content.strip():
+                # Use lowercase keys for consistent checking
+                sec_lower = sec.lower()
+                # Exclude handled sections and metadata keys
+                if sec_lower not in ["full_text", "summary", "skills", "experience_text", "experience", "contact_info"] \
+                   and content and isinstance(content, str) and content.strip():
                     prompt_context_parts.append(f"**{sec.upper()}**\n{content.strip()}")
 
         # Join all parts and truncate
@@ -1351,7 +1389,7 @@ async def generate_application_text_streamed(
         elif not resume_context_for_prompt:
             # Fallback using raw resume from common_data if reconstruction fails
             raw_resume_fallback = common_data.get("raw_resume", "Resume content unavailable.")
-            if raw_resume_fallback:
+            if raw_resume_fallback and isinstance(raw_resume_fallback, str):
                 resume_context_for_prompt = raw_resume_fallback[:MAX_RESUME_PROMPT_LEN]
                 if len(raw_resume_fallback) > MAX_RESUME_PROMPT_LEN: resume_context_for_prompt += "\n... [Raw Resume Truncated] ..."
                 logging.warning("Reconstructed resume context empty, using raw resume fallback.")
@@ -1360,13 +1398,14 @@ async def generate_application_text_streamed(
                 logging.error("Reconstructed resume context empty and raw resume fallback also unavailable.")
         # --- END RECONSTRUCTION ---
 
+
         # Format other common data points
         ranked_reqs = common_data.get("ranked_jd_requirements", [])
         ranked_req_str = "\n".join(f"- {req}" for req in ranked_reqs) if ranked_reqs else "N/A"
         jd_title = jd_data.get('job_title', 'N/A')
         jd_company = jd_data.get('company_name', 'N/A')
         company_context_jd = jd_data.get('company_values_mission_challenges', 'N/A')
-        missing_keywords = common_data.get("missing_keywords_from_resume", [])
+        missing_keywords = common_data.get("missing_keywords_from_resume", []) # Based on FINAL skills list
         missing_keywords_str = ", ".join(f"`{kw}`" for kw in missing_keywords) if missing_keywords else "None"
 
         # Sample bullets string
@@ -1388,7 +1427,7 @@ async def generate_application_text_streamed(
         final_doc_type_name = generation_type
 
         # ============================================================
-        # --- PROMPTS FOR RESUME (Using Filtered Skills List) ---
+        # --- PROMPTS FOR RESUME (Using Final Contact Info & Filtered Skills) ---
         # ============================================================
         if generation_type == TYPE_RESUME:
             final_doc_type_name = "ATS-Optimized Resume"
@@ -1399,15 +1438,19 @@ async def generate_application_text_streamed(
             **Primary Objectives:**
             1.  **Precise Formatting:** Adhere STRICTLY to Markdown examples, including newlines. Use content/structure from 'Parsed Candidate Resume Context'.
             2.  **High ATS Score:** Ensure parseable structure. Use only specified standard Markdown.
-            3.  **Keyword Optimization:** Naturally integrate ~80% of 'Ranked Job Requirements' keywords into Summary, Experience/Project bullets. Use the 'RELEVANT CANDIDATE SKILLS' list provided in the context for the Skills section.
-            4.  **Human Readability & Impact:** Maintain clarity, professionalism (`{tone}`), use strong action verbs, quantify achievements based on context.
+            3.  **Keyword Integration Strategy:** Target ~80% coverage in narrative sections (Summary, Experience/Projects). Integrate keywords **NATURALLY** within sentences. **CRITICAL: DO NOT add keywords in parentheses or bold them separately like `(**data pipelines**)`.** Keywords should be part of the descriptive text itself.            4.  **Human Readability & Impact:** Maintain clarity, professionalism (`{tone}`), use strong action verbs, quantify achievements based on context.
 
             **CRITICAL ATS OPTIMIZATION & CONTENT RULES (Follow Strictly with Examples):**
-            1.  **Standard Section Headings (H2):** Use `##`. Use headings from context (Summary, Experience, Education, Projects etc.). Create `## Skills` heading.
-            2.  **Contact Information:** Top, left-aligned: `# {name}` \\n `Email: {email} | ...`
+            1.  **Standard Section Headings (H2):** Use `##`. Use headings from context (Summary, Experience, Education, Projects etc.). Create `## Skills` heading if relevant skills exist in context.
+            2.  **Contact Information:** Top, left-aligned. Use the extracted/provided info. Format:
+                ```markdown
+                # {final_name}
+                {contact_line}
+                ```
+                *(Use the best available candidate info)*
             3.  **Keyword Integration Strategy:** Target ~80% coverage in narrative sections (Summary, Experience/Projects).
-            4.  **Targeted Summary:** `## Summary` **STRICTLY 1-2 sentences**, based on the summary in the context, tailored to `{jd_title}`, include top keywords.
-            5.  **Skills Section Format (MANDATORY EXAMPLE using provided list):** Create `## Skills` section. Take the skills from '**RELEVANT CANDIDATE SKILLS (Filtered for Job)**' in the context. **Categorize these relevant skills** (e.g., Programming Languages, Cloud Platforms, Tools, Databases, Methodologies) and format **EXACTLY** like the example: `* **Category:** Skill1, Skill2, ...`
+            4.  **Targeted Summary:** `## Summary` **STRICTLY 1-2 sentences**, based on the summary in thecontext, tailored to `{jd_title}`, include top keywords.
+            5.  **Skills Section Format (MANDATORY EXAMPLE using provided list):** Create `## Skills` section. Take the skills from  '**RELEVANT CANDIDATE SKILLS (Filtered for Job)**' in the context, create `## Skills` section. **Categorize these relevant skills** (e.g., Programming Languages, Cloud Platforms, Tools, Databases, Methodologies) and format **EXACTLY** like the example: `* **Category:** Skill1, Skill2, ...` Omit the `## Skills` section entirely if no relevant skills are listed in the context.
                 ```markdown
                 ## Skills
                 * **Programming Languages:** Python (Pandas, NumPy, PySpark), SQL
@@ -1446,24 +1489,24 @@ async def generate_application_text_streamed(
                 Cert A, Cert B, Cert C
                 ```
             9.  **ATS-Friendly Formatting ONLY:** Use `* ` bullets only where shown. AVOID tables, columns, images, icons, unusual symbols, HTML. Standard dates.
-            10. **Content Quality & Conciseness:** Clear, professional (`{tone}`). Action verbs. Quantify from context. **AVOID redundant statements**.
+            10. **Content Quality & Conciseness:** Clear, professional (`{tone}`). Action verbs. Quantify from context. **AVOID redundant statements**. **CRITICAL: DO NOT explicitly highlight or add keywords using parentheses or extra bolding like `(**this**)`**. Integrate keywords seamlessly into the text.
 
-            **Task:** Generate the ATS-Optimized Resume draft in Markdown, adhering **STRICTLY** to ALL rules and **EXACT FORMATTING EXAMPLES**, using the content from 'Parsed Candidate Resume Context'. **Format the provided 'RELEVANT CANDIDATE SKILLS' list into the specified categorized Skills section.** Ensure 1-2 sentence summary limit and ~80% keyword coverage in narrative sections. Output only Markdown.
+            **Task:** Generate the ATS-Optimized Resume draft in Markdown, adhering **STRICTLY** to ALL rules and **EXACT FORMATTING EXAMPLES**, using the content from 'Parsed Candidate Resume Context'. **Format the provided 'RELEVANT CANDIDATE SKILLS' list (if present) into the specified categorized Skills section.** Ensure 1-2 sentence summary limit and ~80% keyword coverage in narrative sections. Output only Markdown.
             """
             critique_criteria = f"""
             **ATS & Content Critique Criteria (Output brief bullet points ONLY, check against examples):**
             1.  **Overall Structure & Formatting Compliance:**
-                * **Section Headings:** Uses **EXACTLY** `## Summary`, `## Skills`, etc.? (Yes/No/Incorrect Heading)
-                * **Contact Info Format:** Top, left-aligned, matches `# Name \\n Contact Line` format? **NO CENTERING?** (Yes/No/Incorrect Format)
-                * **Skills Section Format:** Adheres **EXACTLY** to `* **Category:** Skill1, ...` format per example? Skills used are relevant (check context)? Categories appropriate? (Yes/No/Incorrect Format/Poor Categories)
-                * **Experience Section Format:** Headers match **EXACTLY** `**Title | Co | Loc** (Dates)`? Accomplishments use `* ` bullets below? **Crucially, is there a NEWLINE between the header line and the first bullet?** (Yes/No/Incorrect Header/Incorrect Bullets/Missing Newline)
-                * **Projects Section Format:** Headers match **EXACTLY** `**Project Name**`? Accomplishments use `* ` bullets below? **Crucially, is there a NEWLINE between the header line and the first bullet?** (Yes/No/Incorrect Header/Incorrect Bullets/Missing Newline/NA)
+                * **Section Headings:** Uses **EXACTLY** `## Summary`, `## Skills` (if applicable), etc.? (Yes/No/Incorrect Heading/Missing Optional)
+                * **Contact Info Format:** Top, left-aligned, matches `# Name \\n Contact Line` format? Correct info used? **NO CENTERING?** (Yes/No/Incorrect Format/Info Mismatch)
+                * **Skills Section Format (If Present):** Adheres **EXACTLY** to `* **Category:** Skill1, ...` format per example? Skills used are only relevant  (check context)? Categories appropriate? (Yes/No/Incorrect Format/Poor Categories/NA)
+                * **Experience Section Format:** Headers match **EXACTLY** `**Title | Co | Loc** (Dates)`? Accomplishments Use `* ` bullets below? **Crucially, is there a NEWLINE** between the header line and the first bullet?**? (Yes/No/Incorrect Header/Incorrect Bullets/Missing Newline)
+                * **Projects Section Format (If Present):** Headers match **EXACTLY** `**Project Name**`? Accomplishments use  `* ` bullets below? **Crucially, is there a NEWLINE** between the header line and the first bullet?** (Yes/No/Incorrect Header/Incorrect Bullets/Missing Newline/NA)
                 * **Certifications Format (If Present):** If `## Certifications` exists, is content a single comma-separated string below heading (NO bullets)? (Yes/No/Incorrect Format/NA)
                 * **Simple Formatting:** Consistent standard dates? **Absence** of tables, columns, complex symbols, HTML? (Yes/No/Issues Found)
             2.  **Keyword Optimization Assessment:**
                 * **Keyword Coverage (% Estimate):** Appears to incorporate target ~80% of 'Ranked Job Requirements' keywords in narrative sections? (Estimate: e.g., "High ~80-90%", "Moderate ~60-70%", "Low <50%")
                 * **Keyword Distribution:** Keywords distributed naturally across Summary, Experience/Project bullets? Or concentrated/sparse? (e.g., "Well-distributed", "Concentrated", "Sparse")
-                * **Natural Integration:** Keywords integrated smoothly? Or feels stuffed? (e.g., "Natural", "Forced", "Stuffed")
+                * **Natural Integration:** Keywords integrated smoothly? **No unnatural adding or highlighting `(**like this**)`?** (Natural/Forced/Highlighted)
             3.  **Content Quality & Clarity:**
                 * **Summary Length:** Is `## Summary` **STRICTLY 1 or 2 sentences**? (Yes/No + Count)
                 * **Summary Content:** Concise, tailored, impactful, includes top keywords within limit? (Yes/No/Needs Improvement)
@@ -1473,8 +1516,8 @@ async def generate_application_text_streamed(
             4.  **Requirement Alignment:** Content (esp. Experience/Project bullets) strongly evidences suitability for *top-ranked* job requirements? (Strong/Moderate/Weak)
             """
             refinement_instructions = f"""
-            * **Address ALL Critique Points:** Focus meticulously on fixing any deviations from the **EXACT FORMATTING EXAMPLES**, **especially the required NEWLINES after Experience/Project headers and the Skills section format**. Also fix keyword issues, summary length, content weaknesses, and remove redundant statements.
-            * **Fix Formatting to Match Examples:** Correct Contact Info format (NO CENTERING). Ensure Skills format is `* **Category:** ...` using only relevant skills and appropriate categories. Ensure Experience headers are `**Title | Co | Loc** (Dates)` with a **NEWLINE** then `* ` bullets below. Ensure Project headers are `**Project Name**` with a **NEWLINE** then `* ` bullets below. Ensure Certifications is a comma-separated string (NO bullets). Remove ALL other ATS-unfriendly formatting. # <-- Emphasize Newline/Skills Format Fix
+            * **Address ALL Critique Points:** Fix deviations from **EXACT FORMATTING EXAMPLES** (Newlines, Skills Section, Headers, etc.). Fix keyword issues (coverage, distribution, **remove unnatural highlighting**). Fix summary length, content weaknesses, redundancy.
+            * **Fix Formatting to Match Examples:** Correct Contact Info format (NO CENTERING). Ensure Skills format is `* **Category:** ...` using only relevant skills and appropriate categories. Ensure Experience headers are `**Title | Co | Loc** (Dates)` with a **NEWLINE** then `* ` bullets below. Ensure Project headers are `**Project Name**` with a **NEWLINE** then `* ` bullets below. Ensure Certifications is a comma-separated string (NO bullets). Remove ALL other ATS-unfriendly formatting and **unnatural keyword highlighting**. # <-- Emphasize Newline/Skills Format Fix
             * **Optimize Keyword Coverage & Distribution:** If coverage < ~80% or distribution poor, revise Summary, and Experience/Project bullets to naturally weave in more relevant JD keywords. Ensure spread and context. Avoid stuffing.
             * **MANDATORY Summary Length Correction:** If critique found `## Summary` > 2 sentences, **MUST shorten to exactly 1-2 sentences**. Be ruthless. Retain essential hook/keywords.
             * **Improve Content Quality:** Strengthen action verbs in bullets. Add quantification where appropriate based on context. Enhance clarity. Improve skill demonstration within bullets. **Remove any identified redundant statements.**
@@ -1482,7 +1525,7 @@ async def generate_application_text_streamed(
             """
 
         # ==================================================
-        # --- PROMPTS FOR COVER LETTER (Unaffected by skill filtering logic) ---
+        # --- PROMPTS FOR COVER LETTER (Unaffected) ---
         # ==================================================
         elif generation_type == TYPE_COVER_LETTER:
             final_doc_type_name = "Cover Letter"
@@ -1529,10 +1572,11 @@ async def generate_application_text_streamed(
             return
 
 
+
         # --- Construct Full Prompts ---
-        # Base context uses the reconstructed resume string (with filtered skills list included)
+        # Base context uses final contact info and reconstructed resume context
         base_context = f"""
-        **Candidate:** {name} ({email})
+        **Candidate:** {final_name} ({final_email})
         **Target Job:** {jd_title} at {jd_company}
         **Ranked Job Requirements (Most Important First):**\n{ranked_req_str}
         **Parsed Candidate Resume Context (Includes Filtered Skills & Experience):**\n{resume_context_for_prompt}
@@ -1651,14 +1695,14 @@ async def generate_application_text_streamed(
             yield "\n--- Generation stopped due to final refinement failure. ---\n"
             return
 
-    # --- Global Exception Handler for the entire function ---
+    # --- Global Exception Handler ---
     except Exception as e:
         error_message = f"\n--- Unexpected Critical Error during {generation_type} Generation Pipeline: {e} ---"
         logging.error(f"Critical error in generate_application_text_streamed for {generation_type}: {e}", exc_info=True)
         yield error_message
-        # Provide available context if helpful for debugging
-        if common_data:
+        if common_data: # Check if common_data was populated at all
             yield f"\nDebug Info (Preparation Stage Error): {common_data.get('error', 'None')}"
+            # Safely access nested keys
             yield f"\nDebug Info (JD Data Keys): {list(common_data.get('jd_data', {}).keys())}"
             yield f"\nDebug Info (Resume Data Keys): {list(common_data.get('resume_data', {}).keys())}"
         yield "\n--- Generation stopped due to critical pipeline error. ---"
