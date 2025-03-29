@@ -20,15 +20,16 @@ DEFAULT_RESUME_TXT_PATH = "default_resume.txt"
 
 # --- Page Configuration ---
 st.set_page_config(
-page_title="Hyper-Optimized ATS Suite Generator",
-page_icon="🏆",
-layout="wide",
-initial_sidebar_state="expanded",
+    page_title="Hyper-Optimized ATS Suite Generator",
+    page_icon="🏆",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [App] %(message)s')
 
+# --- Main Function ---
 def main():
 
     # --- Helper Functions ---
@@ -61,8 +62,8 @@ def main():
             if not content.strip():
                 st.sidebar.warning(f"Default resume file '{os.path.basename(file_path)}' is empty.", icon="⚠️")
                 logging.warning(f"Default resume file '{file_path}' is empty.")
-                return None
-            return content.strip()
+                return None # Return None for empty file, handle later
+            return content.strip() # Return content if not empty
         except Exception as e:
             st.sidebar.error(f"Error reading default resume: {e}", icon="❌")
             logging.error(f"Error reading default resume file '{file_path}': {e}", exc_info=True)
@@ -79,20 +80,26 @@ def main():
                     if chunk.strip().startswith("--- ERROR"):
                         error_found = chunk.strip()
                         logging.error(f"Error message yielded by stream: {error_found}")
+                        # Collect text before breaking to provide context
                         break
                     full_text_list.append(chunk)
                 else:
                     logging.warning(f"Received non-string chunk from stream: {type(chunk)}")
 
+            # Check for error *after* iterating through the stream
             if error_found:
                 collected_text = "".join(full_text_list)
-                return {"error": f"{error_found}\n(Collected text before error: '{collected_text[:200]}...')"}
+                # Combine the error marker with any text collected before it stopped
+                full_error_context = f"{error_found}\n(Collected text before error: '{collected_text[:200]}...')"
+                return {"error": full_error_context}
 
+            # Process successful stream collection
             full_text = "".join(full_text_list)
             # Clean up potential generation markers added in llm_handler
             full_text = re.sub(r'^---.*?---\n?', '', full_text, flags=re.MULTILINE)
 
             if not full_text.strip():
+                logging.warning("Generation stream completed but yielded no text content.")
                 return {"error": "Generation stream completed but yielded no text content."}
 
             return {"text": full_text.strip()}
@@ -100,7 +107,6 @@ def main():
         except Exception as e:
             logging.error(f"Error collecting stream: {e}", exc_info=True)
             return {"error": f"Stream collection error: {e}"}
-
 
     # --- Async Task Runner ---
     async def run_generation_tasks(tasks_to_run: Dict[str, asyncio.Task], prep_data: Dict, api_key: str):
@@ -125,7 +131,7 @@ def main():
 
         # --- Process Generation Results & Queue Validation ---
         validation_tasks = {}
-        jd_data_for_validation = prep_data.get("jd_data", {}) # Use prepped JD data
+        jd_data_for_validation = prep_data.get("jd_data", {}) # Use prepped JD data if available
 
         for name, result in all_results.items():
             spinners[name].empty() # Clear individual queued message
@@ -151,7 +157,7 @@ def main():
                     st.session_state.generation_results[name] = {"error": "Email task bad format."}
 
             elif name == "LinkedIn Message": # Simple string or None/Error from generate_linkedin_message
-                if isinstance(result, str) and not result.startswith("Error generating message:"):
+                if isinstance(result, str) and not result.startswith("Error generating message"):
                     st.session_state.generation_results[name] = {"text": result}
                     # No validation needed/queued for LinkedIn message
                 else: # Likely None or error string from handler
@@ -167,14 +173,19 @@ def main():
                         # Queue validation task using the collected text
                         logging.info(f"Queueing validation task for {name}...")
                         if api_key: # Ensure api key is available for validation call
-                            validation_tasks[name] = asyncio.create_task(
-                                llm_handler._validate_ats_friendliness(
-                                    document_text=result["text"],
-                                    document_type=name,
-                                    job_description_data=jd_data_for_validation,
-                                    google_api_key=api_key
+                            # Ensure jd_data_for_validation exists before queueing validation
+                            if jd_data_for_validation:
+                                validation_tasks[name] = asyncio.create_task(
+                                    llm_handler._validate_ats_friendliness(
+                                        document_text=result["text"],
+                                        document_type=name,
+                                        job_description_data=jd_data_for_validation,
+                                        google_api_key=api_key
+                                    )
                                 )
-                            )
+                            else:
+                                st.session_state.validation_results[name] = {"error": "Cannot run validation: Job Description data was not successfully prepared."}
+                                logging.warning(f"Skipping validation for {name}: JD data missing from prep_data.")
                         else:
                             st.session_state.validation_results[name] = {"error": "API Key missing, cannot run validation."}
                     else:
@@ -323,10 +334,10 @@ def main():
         # -- End Validation --
 
         # --- Define and Execute Main Async Orchestration ---
-        #--- [COMPLETE CODE FOR CORRECTED async_main FUNCTION] ---
         async def async_main():
             prep_placeholder = st.empty()
             prep_data = {} # Initialize prep_data for this run
+            is_fatal_error = False # Flag for prep errors
 
             try:
                 # --- Configure API Key ---
@@ -345,6 +356,7 @@ def main():
                     return
 
                 # --- Run Data Prep Only If Needed (and only ONCE) ---
+                # Data prep is needed if any document generation is selected
                 needs_prep = gen_resume or gen_cover_letter or gen_email or gen_linkedin
                 if needs_prep:
                     prep_placeholder.info("⚙️ Preparing & analyzing inputs...")
@@ -356,79 +368,72 @@ def main():
                     # Check for critical errors from prep before proceeding
                     prep_error = prep_data.get("error")
                     if prep_error:
-                         # Determine if error is fatal or just warning
-                         is_fatal_error = False
-                         errors = prep_error.split('; ')
-                         fatal_keywords = ["failed", "unavailable", "missing", "exception", "critical"]
-                         # Treat as fatal if any error contains fatal keywords AND is not explicitly a warning
-                         if any(fk in e.lower() for e in errors for fk in fatal_keywords if "warning" not in e.lower()):
-                              is_fatal_error = True
+                        # Determine if error is fatal or just warning
+                        errors = prep_error.split('; ')
+                        fatal_keywords = ["failed", "unavailable", "missing", "exception", "critical"]
+                        # Treat as fatal if any error contains fatal keywords AND is not explicitly a warning
+                        if any(fk in e.lower() for e in errors for fk in fatal_keywords if "warning" not in e.lower()):
+                            is_fatal_error = True
 
-                         if is_fatal_error:
-                              st.error(f"Data Preparation Failed: {prep_error}. Cannot generate documents.")
-                              logging.error(f"Data Preparation Failed: {prep_error}")
-                              # Display missing keywords info even if prep failed but produced keywords
-                              st.session_state.missing_keywords_identified = prep_data.get("missing_keywords_from_resume", [])
-                              if st.session_state.missing_keywords_identified:
-                                   st.warning(f"Data prep failed, but identified potential missing keywords: `{', '.join(st.session_state.missing_keywords_identified)}`")
-                              return # Stop async execution
-                         else: # Treat as warnings
-                              st.warning(f"Data Preparation Warning: {prep_error}. Attempting generation...")
-
+                        if is_fatal_error:
+                            st.error(f"Data Preparation Failed: {prep_error}. Cannot generate documents.")
+                            logging.error(f"Data Preparation Failed: {prep_error}")
+                        else: # Treat as warnings
+                            st.warning(f"Data Preparation Warning: {prep_error}. Attempting generation...")
 
                     # Store and Display Missing Keywords (always do this after prep attempt)
                     st.session_state.missing_keywords_identified = prep_data.get("missing_keywords_from_resume", [])
                     if not prep_error: # Only show success/info message if no errors/warnings
-                         if st.session_state.missing_keywords_identified:
-                              st.info(f"JD keywords potentially missing: `{', '.join(st.session_state.missing_keywords_identified)}` (Attempting incorporation).")
-                         else:
-                              st.success("✅ Input analysis complete. No specific missing resume keywords targeted.", icon="🔍")
-                         await asyncio.sleep(0.5) # Short delay for user to see message
+                        if st.session_state.missing_keywords_identified:
+                            st.info(f"JD keywords potentially missing: `{', '.join(st.session_state.missing_keywords_identified)}` (Attempting incorporation).")
+                        else:
+                            st.success("✅ Input analysis complete. No specific missing resume keywords targeted.", icon="🔍")
+                        await asyncio.sleep(0.5) # Short delay for user to see message
+                    elif st.session_state.missing_keywords_identified and is_fatal_error: # Show even if fatal error
+                         st.warning(f"Data prep failed, but identified potential missing keywords: `{', '.join(st.session_state.missing_keywords_identified)}`")
+
 
                 else: # No prep needed
                     prep_placeholder.empty()
 
                 # --- Create Async Tasks ---
                 tasks = {}
-                # Check if prep is needed and was successful (or only had warnings) before creating tasks
-                # Allow proceeding even if prep_data has only warnings, but not fatal errors
-                allow_task_creation = True
-                if needs_prep:
-                    if not prep_data or prep_data.get("error") and is_fatal_error: # Check fatal error flag
-                         allow_task_creation = False
+                # Only create tasks if prep was not needed, or if it was needed and didn't have a fatal error
+                allow_task_creation = not needs_prep or (needs_prep and not is_fatal_error)
 
                 if allow_task_creation:
-                    # *** Corrected Task Creation Calls ***
+                    # *** CORRECTED Task Creation Calls ***
                     if gen_resume:
                         tasks["Resume"] = asyncio.create_task(_collect_stream(
-                            llm_handler.generate_application_text_streamed( # Use correct signature
+                            llm_handler.generate_application_text_streamed( # Pass raw inputs
                                 name=candidate_name or "Candidate",
                                 email=candidate_email or "candidate@example.com",
-                                common_data=prep_data, # Pass prepared data
+                                job_description=job_desc,                 # Pass raw JD
+                                resume_content=final_resume_content,      # Pass raw Resume
                                 generation_type=llm_handler.TYPE_RESUME,
                                 google_api_key=google_api_key,
                                 tone=tone
                             )
                         ))
                     if gen_cover_letter:
-                         tasks["Cover Letter"] = asyncio.create_task(_collect_stream(
-                            llm_handler.generate_application_text_streamed( # Use correct signature
+                        tasks["Cover Letter"] = asyncio.create_task(_collect_stream(
+                            llm_handler.generate_application_text_streamed( # Pass raw inputs
                                 name=candidate_name or "Candidate",
                                 email=candidate_email or "candidate@example.com",
-                                common_data=prep_data, # Pass prepared data
+                                job_description=job_desc,                 # Pass raw JD
+                                resume_content=final_resume_content,      # Pass raw Resume
                                 generation_type=llm_handler.TYPE_COVER_LETTER,
                                 google_api_key=google_api_key,
                                 tone=tone
                             )
                         ))
                     if gen_email:
-                         # generate_email_and_validate also needs updating in llm_handler
-                         # Assuming it's updated to take common_data:
                          tasks["Email"] = asyncio.create_task(
-                            llm_handler.generate_email_and_validate( # Use correct signature
+                            llm_handler.generate_email_and_validate( # Pass raw inputs
                                 name=candidate_name or "Candidate",
                                 email=candidate_email or "candidate@example.com",
-                                common_data=prep_data, # Pass prepared data
+                                job_description=job_desc,                 # Pass raw JD
+                                resume_content=final_resume_content,      # Pass raw Resume
                                 google_api_key=google_api_key,
                                 tone=tone,
                                 email_recipient_type=email_recipient_type,
@@ -436,35 +441,43 @@ def main():
                             )
                         )
                     if gen_linkedin:
-                         # generate_linkedin_message uses jd_data and resume_data from prep_data
-                         jd_data_for_linkedin = prep_data.get("jd_data", {})
-                         resume_data_for_linkedin = prep_data # Pass full prep data
-                         tasks["LinkedIn Message"] = asyncio.create_task(
+                        # generate_linkedin_message needs the *processed* dicts from prep_data
+                        jd_data_for_linkedin = prep_data.get("jd_data", {})
+                        # Ensure we get the resume_data dict *within* prep_data
+                        resume_data_for_linkedin = prep_data.get("resume_data", {})
+                        # Also need ranked reqs from prep_data for LinkedIn
+                        ranked_reqs_for_linkedin = prep_data.get("ranked_jd_requirements", [])
+                        # Add ranked_reqs to the resume_data dict if not present (function expects it there)
+                        if "ranked_jd_requirements" not in resume_data_for_linkedin:
+                             resume_data_for_linkedin["ranked_jd_requirements"] = ranked_reqs_for_linkedin
+
+                        tasks["LinkedIn Message"] = asyncio.create_task(
                              llm_handler.generate_linkedin_message(
                                  name=candidate_name or "Candidate",
-                                 job_description_data=jd_data_for_linkedin,
-                                 resume_data=resume_data_for_linkedin,
+                                 job_description_data=jd_data_for_linkedin, # Pass processed JD Dict
+                                 resume_data=resume_data_for_linkedin,       # Pass processed Resume Dict (incl. ranked reqs)
                                  google_api_key=google_api_key,
                                  tone=tone,
                                  connection_name=linkedin_connection_name or None
                              )
                          )
-                elif needs_prep: # Prep was needed but failed fatally
-                     # Error already shown above after prep call
+                elif needs_prep and is_fatal_error:
+                     # Prep needed but failed fatally, error already shown
                      pass # Don't create tasks
+                elif not needs_prep: # No tasks selected
+                     st.info("No content selected for generation.")
 
                 # --- Run Tasks Concurrently ---
                 if tasks:
+                    # Pass prep_data to run_generation_tasks for validation step context
                     await run_generation_tasks(tasks, prep_data, google_api_key)
-                elif not needs_prep:
-                    st.info("No content selected for generation.")
-                # else: Prep needed but failed fatally, error already displayed
+                # else: Conditions where no tasks run are handled above
 
             except Exception as main_e:
                 st.error(f"An unexpected error occurred during asynchronous execution: {main_e}")
                 logging.exception("Error in async_main execution:")
             finally:
-                 prep_placeholder.empty() # Ensure cleanup
+                prep_placeholder.empty() # Ensure cleanup
 
 
         # --- Execute ---
@@ -477,9 +490,9 @@ def main():
                              any(val.get("error") for val in st.session_state.validation_results.values())
 
                 if not has_errors:
-                     st.success("✅ Generation process finished!", icon="🎉")
+                    st.success("✅ Generation process finished!", icon="🎉")
                 else:
-                     st.warning("Generation process finished, but some errors occurred (see details above).", icon="⚠️")
+                    st.warning("Generation process finished, but some errors occurred (see details below).", icon="⚠️")
 
             except Exception as e:
                 st.error(f"Error running the main async process: {e}")
