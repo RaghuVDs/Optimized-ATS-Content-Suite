@@ -736,6 +736,248 @@ async def _rank_jd_requirements(requirements: List[str], google_api_key: str) ->
     return result
 
 
+async def _select_top_bullets_llm(
+    bullets: List[str],
+    job_requirements: List[str],
+    google_api_key: str,
+    model_name: str = EXTRACTION_MODEL_NAME,
+    max_bullets: int = 8
+) -> Dict[str, Any]:
+    """
+    Uses an LLM to select the top N most relevant bullets from a list (usually from one job entry)
+    based on job requirements.
+    """
+    if not bullets:
+        return {"selected_list": [], "error": "No bullets provided for selection."}
+    if not job_requirements:
+        logging.warning("No job requirements provided for bullet selection. Returning original bullets (up to max).")
+        # Return original bullets up to the limit, no error reported upstream
+        return {"selected_list": bullets[:max_bullets], "error": None}
+
+    # Format inputs for the prompt
+    bullets_str = "\n".join(f"- {b}" for b in bullets)
+    # Use only top N requirements for context to keep prompt manageable? Let's use all for now.
+    requirements_str = "\n".join(f"- {r}" for r in job_requirements)
+
+    prompt = f"""
+    **Task:** Analyze the following 'List of Resume Bullet Points' and select the ones most relevant to the 'Target Job Requirements'.
+
+    **Context:**
+    * **Target Job Requirements (Ranked by Importance):**
+    {requirements_str}
+    * **List of Resume Bullet Points (from a single job):**
+    {bullets_str}
+
+    **Instructions:**
+    1.  Carefully compare each bullet point from the 'List of Resume Bullet Points' against the 'Target Job Requirements'.
+    2.  Identify and select **up to {max_bullets}** bullet points from the *original list* that demonstrate the strongest alignment and relevance to the *most important* job requirements.
+    3.  Prioritize bullets that showcase skills, experiences, or quantifiable results directly mentioned or implied in the job requirements.
+    4.  Return ONLY a valid JSON object containing a single key: "selected_bullets".
+    5.  The value of "selected_bullets" MUST be a list containing the exact text of the selected bullet points, ordered from most relevant to least relevant according to your analysis.
+    6.  The list MUST contain **no more than {max_bullets}** bullet points. If the original list has fewer than {max_bullets} relevant bullets, return only the relevant ones. If the original list itself has fewer than {max_bullets} bullets, return all of them if they seem relevant.
+
+    **JSON Output (containing ONLY the "selected_bullets" key):**
+    """
+
+    # Default to original N bullets in case of failure below
+    result = {"selected_list": bullets[:max_bullets], "error": None}
+
+    try:
+        response_text = await _call_llm_async(
+            prompt=prompt,
+            api_key=google_api_key,
+            model_name=model_name,
+            temperature=0.1, # Low temp for deterministic selection
+            request_json=True
+        )
+
+        if isinstance(response_text, str):
+            raw_json_string = response_text
+            try:
+                selection_data = json.loads(raw_json_string)
+                if not isinstance(selection_data, dict) or "selected_bullets" not in selection_data:
+                    raise ValueError("LLM response missing 'selected_bullets' key or is not a dictionary.")
+
+                selected_list_raw = selection_data["selected_bullets"]
+                if not isinstance(selected_list_raw, list):
+                    raise ValueError("Value associated with 'selected_bullets' is not a list.")
+
+                # Validate content: ensure items are strings and cap the length
+                validated_selected_list = [
+                    str(item).strip() for item in selected_list_raw
+                    if isinstance(item, str) and str(item).strip()
+                ][:max_bullets] # Ensure max length constraint is applied *after* LLM potentially violates it
+
+                # More robust check: Ensure selected bullets were actually present in the input list
+                original_bullets_set = set(bullets)
+                final_selection = []
+                for b_selected in validated_selected_list:
+                    # Simple check for exact match
+                    if b_selected in original_bullets_set:
+                        final_selection.append(b_selected)
+                    else:
+                        logging.warning(f"LLM selected bullet slightly differs or wasn't in original list: '{b_selected}'")
+                        # Discarding slightly modified bullets for strictness.
+
+                if len(final_selection) != len(validated_selected_list):
+                    logging.warning(f"Filtered LLM selection to bullets found in the original list. Original selection count: {len(validated_selected_list)}, Final count: {len(final_selection)}")
+
+                if not final_selection: # Handle case where LLM hallucinates or returns nothing valid
+                    logging.warning("LLM returned no valid bullets matching the original list. Falling back to top N original bullets.")
+                    result["selected_list"] = bullets[:max_bullets] # Fallback to original list (first N)
+                    result["error"] = "LLM failed to select valid bullets matching originals." # Report specific issue
+                else:
+                    result["selected_list"] = final_selection
+                    result["error"] = None # Success
+                    logging.info(f"Successfully selected {len(final_selection)} relevant bullets.")
+
+
+            except (json.JSONDecodeError, ValueError) as json_err:
+                error_msg = f"Failed to parse/validate bullet selection JSON: {json_err}"
+                logging.error(f"{error_msg}. Raw Response: {raw_json_string[:500]}...")
+                result["error"] = error_msg
+                # Keep default selected_list (top N original) on error
+            except Exception as e_inner:
+                error_msg = f"Unexpected error processing bullet selection JSON: {e_inner}"
+                logging.error(error_msg, exc_info=True)
+                result["error"] = error_msg
+                # Keep default selected_list on error
+        else:
+             # Handle non-string response from LLM call
+             logging.error(f"Unexpected return type from _call_llm_async for bullet selection: {type(response_text)}")
+             result["error"] = "Error: LLM call for bullet selection did not return text."
+             # Keep default selected_list on error
+
+    except Exception as e:
+        # Handle errors during the LLM call itself
+        logging.error(f"Error during LLM call for bullet selection: {e}", exc_info=True)
+        result["error"] = f"Bullet Selection LLM Call Error: {e}"
+        # Keep default selected_list on error
+
+    return result
+
+
+# --- Select Top Projects based on JD (Async LLM) ---
+async def _select_top_projects_llm(
+    projects: List[str],               # Assumes a list of project description strings
+    job_requirements: List[str],
+    google_api_key: str,
+    model_name: str = EXTRACTION_MODEL_NAME,
+    max_projects: int = 3              # Default to selecting top 3
+) -> Dict[str, Any]:
+    """
+    Uses an LLM to select the top 3 most relevant projects from a list based on job requirements.
+    Assumes each project in the list is a string description.
+    """
+    if not projects:
+        return {"selected_list": [], "error": "No projects provided for selection."}
+    if not job_requirements:
+        logging.warning("No job requirements provided for project selection. Returning original projects (up to max).")
+        # Return original projects up to the limit, no error reported upstream
+        return {"selected_list": projects[:max_projects], "error": None}
+
+    # Format inputs for the prompt
+    projects_str = "\n".join(f"- {p}" for p in projects)
+    requirements_str = "\n".join(f"- {r}" for r in job_requirements)
+
+    prompt = f"""
+    **Task:** Analyze the following 'List of Resume Projects' and select the ones most relevant to the 'Target Job Requirements'.
+
+    **Context:**
+    * **Target Job Requirements (Ranked by Importance):**
+    {requirements_str}
+    * **List of Resume Projects (Descriptions):**
+    {projects_str}
+
+    **Instructions:**
+    1.  Carefully compare each project description from the 'List of Resume Projects' against the 'Target Job Requirements'.
+    2.  Identify and select **up to {max_projects}** projects from the *original list* that demonstrate the strongest alignment and relevance to the *most important* job requirements.
+    3.  Prioritize projects that showcase skills, technologies, or outcomes directly mentioned or implied in the job requirements.
+    4.  Return ONLY a valid JSON object containing a single key: "selected_projects".
+    5.  The value of "selected_projects" MUST be a list containing the exact text of the selected project descriptions, ordered from most relevant to least relevant according to your analysis.
+    6.  The list MUST contain **no more than {max_projects}** projects. If the original list has fewer than {max_projects} relevant projects, return only the relevant ones. If the original list itself has fewer than {max_projects} projects, return all of them if they seem relevant.
+
+    **JSON Output (containing ONLY the "selected_projects" key):**
+    """
+
+    # Default to original N projects in case of failure below
+    result = {"selected_list": projects[:max_projects], "error": None}
+
+    try:
+        response_text = await _call_llm_async(
+            prompt=prompt,
+            api_key=google_api_key,
+            model_name=model_name,
+            temperature=0.1, # Low temp for deterministic selection
+            request_json=True
+        )
+
+        if isinstance(response_text, str):
+            raw_json_string = response_text
+            try:
+                selection_data = json.loads(raw_json_string)
+                if not isinstance(selection_data, dict) or "selected_projects" not in selection_data:
+                    raise ValueError("LLM response missing 'selected_projects' key or is not a dictionary.")
+
+                selected_list_raw = selection_data["selected_projects"]
+                if not isinstance(selected_list_raw, list):
+                    raise ValueError("Value associated with 'selected_projects' is not a list.")
+
+                # Validate content: ensure items are strings and cap the length
+                validated_selected_list = [
+                    str(item).strip() for item in selected_list_raw
+                    if isinstance(item, str) and str(item).strip()
+                ][:max_projects] # Ensure max length constraint is applied *after* LLM potentially violates it
+
+                # More robust check: Ensure selected projects were actually present in the input list
+                original_projects_set = set(projects)
+                final_selection = []
+                for p_selected in validated_selected_list:
+                    # Simple check for exact match
+                    if p_selected in original_projects_set:
+                        final_selection.append(p_selected)
+                    else:
+                        logging.warning(f"LLM selected project slightly differs or wasn't in original list: '{p_selected}'")
+                        # Discarding slightly modified projects for strictness.
+
+                if len(final_selection) != len(validated_selected_list):
+                    logging.warning(f"Filtered LLM selection to projects found in the original list. Original selection count: {len(validated_selected_list)}, Final count: {len(final_selection)}")
+
+                if not final_selection: # Handle case where LLM hallucinates or returns nothing valid
+                    logging.warning("LLM returned no valid projects matching the original list. Falling back to top N original projects.")
+                    result["selected_list"] = projects[:max_projects] # Fallback to original list (first N)
+                    result["error"] = "LLM failed to select valid projects matching originals." # Report specific issue
+                else:
+                    result["selected_list"] = final_selection
+                    result["error"] = None # Success
+                    logging.info(f"Successfully selected {len(final_selection)} relevant projects.")
+
+
+            except (json.JSONDecodeError, ValueError) as json_err:
+                error_msg = f"Failed to parse/validate project selection JSON: {json_err}"
+                logging.error(f"{error_msg}. Raw Response: {raw_json_string[:500]}...")
+                result["error"] = error_msg
+                # Keep default selected_list (top N original) on error
+            except Exception as e_inner:
+                error_msg = f"Unexpected error processing project selection JSON: {e_inner}"
+                logging.error(error_msg, exc_info=True)
+                result["error"] = error_msg
+                # Keep default selected_list on error
+        else:
+             # Handle non-string response from LLM call
+             logging.error(f"Unexpected return type from _call_llm_async for project selection: {type(response_text)}")
+             result["error"] = "Error: LLM call for project selection did not return text."
+             # Keep default selected_list on error
+
+    except Exception as e:
+        # Handle errors during the LLM call itself
+        logging.error(f"Error during LLM call for project selection: {e}", exc_info=True)
+        result["error"] = f"Project Selection LLM Call Error: {e}"
+        # Keep default selected_list on error
+
+    return result
+
+
 # --- Data Preparation (Async) ---
 async def _prepare_common_data(job_description: str, resume_content: str, google_api_key: str) -> Dict[str, Any]:
     """Orchestrates enhanced data extraction (JD), parsing (Resume), ranking (JD reqs), and keyword comparison."""
@@ -885,9 +1127,13 @@ async def generate_application_text_streamed(
     """
     Generates Resume or Cover Letter using a multi-turn refinement process (async stream).
     - Cover Letter focuses on deep company alignment.
-    - Resume focuses on strict ATS optimization rules, high keyword coverage (~80%), and natural distribution.
+    - Resume focuses on strict ATS optimization rules, high keyword coverage (~80%),
+      natural distribution, AND selecting top relevant experience/project points.
     """
     common_data = {} # To store results from _prepare_common_data
+    selected_bullets_context_str = "" # Initialize context strings
+    selected_projects_context_str = ""
+
     try:
         # --- 1. Prepare Data (JD Extraction, Resume Parsing, Ranking, Keyword Gap) ---
         yield "--- Preparing and analyzing inputs (Job Description, Resume)... ---\n"
@@ -898,44 +1144,126 @@ async def generate_application_text_streamed(
             yield f"\n--- ERROR during data preparation: {common_data['error']} ---\n"
             # Provide more specific debug info based on error messages
             if "JD Extraction failed" in common_data["error"]:
-                 yield f"DEBUG: Could not fully process the Job Description. Check its format and content.\n"
+                yield f"DEBUG: Could not fully process the Job Description. Check its format and content.\n"
             if "Resume Parsing failed" in common_data["error"]:
-                 yield f"DEBUG: Could not fully process the Resume. Check its format and content.\n"
-                 # Include raw resume snippet if parsing failed badly
-                 yield f"DEBUG: Raw Resume Snippet (first 500 chars):\n------\n{resume_content[:500]}\n------\n"
+                yield f"DEBUG: Could not fully process the Resume. Check its format and content.\n"
+                yield f"DEBUG: Raw Resume Snippet (first 500 chars):\n------\n{resume_content[:500]}\n------\n"
             yield "\n--- Generation stopped due to data preparation errors. ---\n"
             return # Stop generation if critical prep failed
 
         # --- Verify Essential Data Pieces ---
-        # Check if JD data (especially title and requirements) is usable
         jd_data = common_data.get("jd_data", {})
         if not jd_data or not jd_data.get("job_title") or not jd_data.get("key_skills_requirements"):
-             # Allow ranking to potentially fail, but need title and some requirements
-             yield "\n--- ERROR: Critical Job Description data (Title or Requirements) missing after preparation. Cannot proceed effectively. ---\n"
-             yield f"DEBUG: Extracted JD Data Keys: {list(jd_data.keys())}\n"
-             yield f"DEBUG: Job Title: {jd_data.get('job_title')}\n"
-             yield f"DEBUG: Requirements Count: {len(jd_data.get('key_skills_requirements', []))}\n"
-             yield "\n--- Generation stopped due to missing critical JD data. ---\n"
-             return
+            yield "\n--- ERROR: Critical Job Description data (Title or Requirements) missing after preparation. Cannot proceed effectively. ---\n"
+            yield f"DEBUG: Job Title: {jd_data.get('job_title')}\n"
+            yield f"DEBUG: Requirements Count: {len(jd_data.get('key_skills_requirements', []))}\n"
+            yield f"DEBUG: Job Title: {jd_data.get('job_title')}\n"
+            yield f"DEBUG: Requirements Count: {len(jd_data.get('key_skills_requirements', []))}\n"            
+            yield "\n--- Generation stopped due to missing critical JD data. ---\n"
+            return
 
-        # Check if resume data (sections and keywords) is usable
         resume_data = common_data.get("resume_data", {})
-        if not resume_data or not resume_data.get("sections") or resume_data.get("extracted_keywords") is None: # Check keywords list exists
-             yield "\n--- WARNING: Resume data (Sections or Keywords) appears incomplete after preparation. Generation quality may be affected. ---\n"
-             yield f"DEBUG: Resume Data Keys: {list(resume_data.keys())}\n"
-             yield f"DEBUG: Resume Sections Keys: {list(resume_data.get('sections', {}).keys())}\n"
-             yield f"DEBUG: Resume Keywords Count: {len(resume_data.get('extracted_keywords', [])) if resume_data.get('extracted_keywords') is not None else 'N/A'}\n"
-             # Decide whether to stop or continue. Let's continue but warn.
-             # return # Uncomment to stop if resume parsing is absolutely critical
+        if not resume_data or not resume_data.get("sections") or resume_data.get("extracted_keywords") is None:
+            yield "\n--- WARNING: Resume data (Sections or Keywords) appears incomplete after preparation. Generation quality may be affected. ---\n"
+            yield f"DEBUG: Resume Data Keys: {list(resume_data.keys())}\n"
+            yield f"DEBUG: Resume Sections Keys: {list(resume_data.get('sections', {}).keys())}\n"
+            yield f"DEBUG: Resume Keywords Count: {len(resume_data.get('extracted_keywords', [])) if resume_data.get('extracted_keywords') is not None else 'N/A'}\n"# ... (keep existing debug yields) ...
+            # Decide whether to stop or continue. Let's continue but warn.
 
-
-        # --- Format Common Inputs for Prompts ---
-        # Safely access data using .get()
+        # --- Extract common data points (needed for both selection and prompts) ---
+        ranked_reqs = common_data.get("ranked_jd_requirements", [])
         resume_sections = resume_data.get("sections", {})
+        resume_achievements = resume_data.get("achievements", []) # Used for bullet selection
+
+
+        # --- *** NEW: Select Top Bullets & Projects (Only for Resumes) *** ---
+        if generation_type == TYPE_RESUME:
+            yield "--- Selecting top relevant experience and projects... ---\n"
+
+            # --- Select Top Bullets (from Achievements) ---
+            if resume_achievements and ranked_reqs:
+                # Format achievements into strings for selection
+                achievement_strings = []
+                for ach in resume_achievements:
+                    verb = ach.get('action_verb', 'Processed')
+                    result = ach.get('quantifiable_result')
+                    # Create a representative string (adjust format as needed)
+                    ach_str = f"{verb}..." + (f" (Result: {result})" if result else "")
+                    achievement_strings.append(ach_str)
+
+                if achievement_strings:
+                    logging.info(f"Attempting to select top bullets from {len(achievement_strings)} achievements.")
+                    bullet_selection_result = await _select_top_bullets_llm(
+                        bullets=achievement_strings,
+                        job_requirements=ranked_reqs,
+                        google_api_key=google_api_key,
+                        max_bullets= 8 # Select slightly more bullets overall
+                    )
+                    if bullet_selection_result.get("error"):
+                        logging.warning(f"Bullet selection failed: {bullet_selection_result['error']}. Proceeding without selected highlights.")
+                    else:
+                        selected_bullets = bullet_selection_result.get("selected_list", [])
+                        if selected_bullets:
+                            selected_bullets_context_str = "**Selected Experience Highlights (Prioritize incorporating these):**\n" + "\n".join(f"- {b}" for b in selected_bullets)
+                            logging.info(f"Selected {len(selected_bullets)} experience highlights.")
+                        else:
+                            logging.info("Bullet selection ran but returned no bullets.")
+                else:
+                     logging.info("No formatted achievement strings to select bullets from.")
+
+            else:
+                logging.warning("Skipping bullet selection due to missing achievements or requirements.")
+
+
+            # --- Select Top Projects ---
+            projects_text = resume_sections.get("projects")
+            if projects_text and isinstance(projects_text, str) and ranked_reqs:
+                 # Attempt simple parsing: Split by potential project markers (e.g., double newline, heading)
+                 # This is basic and might need refinement based on actual resume format.
+                 # Assumes projects start with '**' or similar markdown heading-like structure potentially preceded by newlines.
+                potential_projects = re.split(r'\n\s*\n(?=\*\*.*?\*\*\s*\n)', projects_text.strip()) # Split on blank lines before bold titles
+                if len(potential_projects) <= 1 and '\n**' in projects_text: # Try splitting just on bold titles if the first split failed
+                     potential_projects = re.split(r'(?<=\n)\*\*(.*?)\*\*\s*\n', projects_text.strip())
+                     # Filter out empty strings and re-add markdown to titles
+                     potential_projects = [f"**{p.strip()}**" for p in potential_projects if p and p.strip()]
+
+
+                all_project_descriptions = [p.strip() for p in potential_projects if p and p.strip()]
+
+                if all_project_descriptions:
+                    logging.info(f"Attempting to select top projects from {len(all_project_descriptions)} potential project descriptions.")
+                    project_selection_result = await _select_top_projects_llm(
+                        projects=all_project_descriptions,
+                        job_requirements=ranked_reqs,
+                        google_api_key=google_api_key,
+                        max_projects=3 # Select top 3
+                    )
+                    if project_selection_result.get("error"):
+                        logging.warning(f"Project selection failed: {project_selection_result['error']}. Proceeding without selected projects.")
+                    else:
+                        selected_projects = project_selection_result.get("selected_list", [])
+                        if selected_projects:
+                            # Assume selected_projects are full markdown chunks
+                            selected_projects_context_str = "**Selected Project Highlights (Prioritize incorporating these):**\n\n" + "\n\n".join(selected_projects)
+                            logging.info(f"Selected {len(selected_projects)} project highlights.")
+                        else:
+                            logging.info("Project selection ran but returned no projects.")
+                else:
+                     logging.info("Could not parse project descriptions for selection.")
+
+            else:
+                 logging.warning("Skipping project selection due to missing project text or requirements.")
+            yield "--- Selection finished. Proceeding with generation... ---\n"
+        # --- *** END NEW SELECTION LOGIC *** ---
+
+
+        # --- Format Common Inputs for Prompts (Now includes selected context) ---
+        # Safely access data using .get() - Already done above for resume_sections, resume_keywords, resume_achievements, ranked_reqs
         resume_keywords = resume_data.get("extracted_keywords", [])
         resume_achievements = resume_data.get("achievements", [])
 
         # Format resume sections string for prompt context (handle truncation)
+        # Use the original sections here, selected context is added separately below
         resume_sections_str = "\n\n".join(
             f"**{sec.upper()}**\n{content}"
             for sec, content in resume_sections.items()
@@ -950,7 +1278,7 @@ async def generate_application_text_streamed(
              raw_resume = common_data.get("raw_resume", "Resume content not available.")
              resume_sections_str = raw_resume[:MAX_RESUME_PROMPT_LEN] # Truncate raw too
              if len(raw_resume) > MAX_RESUME_PROMPT_LEN:
-                  resume_sections_str += "\n... [Raw Resume Truncated] ..."
+                 resume_sections_str += "\n... [Raw Resume Truncated] ..."
              logging.warning("Resume sections empty after parsing attempt, using raw resume content in prompt.")
 
 
@@ -963,19 +1291,17 @@ async def generate_application_text_streamed(
         missing_keywords = common_data.get("missing_keywords_from_resume", [])
         missing_keywords_str = ", ".join(f"`{kw}`" for kw in missing_keywords) if missing_keywords else "None identified or comparison failed."
 
-        # Safely format achievements sample as JSON string
+        # Safely format achievements sample as JSON string (still useful for general context)
         achievements_sample_str = "N/A"
         try:
-             # Sample first 5 achievements for brevity in prompt
-             achievements_sample_str = json.dumps(resume_achievements[:5], indent=2)
+            # Sample first 5 achievements for brevity in prompt
+            achievements_sample_str = json.dumps(resume_achievements[:5], indent=2)
         except TypeError as json_e:
-             logging.error(f"Could not serialize resume achievements for prompt: {json_e}")
-             achievements_sample_str = "[Error serializing achievements]"
+            logging.error(f"Could not serialize resume achievements for prompt: {json_e}")
+            achievements_sample_str = "[Error serializing achievements]"
 
 
         # --- External Company Info Placeholder ---
-        # This section remains a placeholder as external fetching wasn't implemented
-        # in _prepare_common_data. Add logic here if external fetching is added later.
         external_company_prompt_section = "**External Company Research Findings:** Not Available (Feature not implemented)."
 
 
@@ -985,25 +1311,19 @@ async def generate_application_text_streamed(
         refinement_instructions = ""
         final_doc_type_name = generation_type # Default
 
-        # --- Start of Replacement Block for TYPE_RESUME within generate_application_text_streamed ---
-
-        # --- Start of REPLACEMENT Block for TYPE_RESUME within generate_application_text_streamed ---
-# --- Adds EXPLICIT instruction for NEWLINE after Experience/Project headers ---
-
-        # ============================================================
-        # --- PROMPTS FOR RESUME (Strict ATS + Explicit Newlines) ---
-        # ============================================================
+        # --- UPDATED PROMPTS FOR RESUME ---
         if generation_type == TYPE_RESUME:
-            final_doc_type_name = "ATS-Optimized Resume (Explicit Newline Format)"
+            final_doc_type_name = "ATS-Optimized Resume (Selected Highlights)" # Updated name slightly
             draft_task_instructions = f"""
             **Role:** Expert Resume Writer & ATS Optimization Specialist adapting content to a precise format.
-            **Goal:** Generate a **FIRST DRAFT** ATS-Optimized Resume in **Markdown format** using the **EXACT** formatting examples provided below, paying close attention to line breaks. The resume MUST be easily parseable by Applicant Tracking Systems, compelling for human readers, AND strategically incorporate keywords.
+            **Goal:** Generate a **FIRST DRAFT** ATS-Optimized Resume in **Markdown format** using the **EXACT** formatting examples provided below. The resume MUST be easily parseable, compelling, incorporate keywords, AND **prioritize including the content from 'Selected Experience Highlights' and 'Selected Project Highlights' provided in the context below.**
 
             **Primary Objectives:**
-            1.  **Precise Formatting:** Adhere STRICTLY to the Markdown formatting examples given for each section, including required newlines.
-            2.  **High ATS Score:** Ensure the structure remains parseable. Use only standard Markdown elements as specified.
-            3.  **Keyword Optimization:** Naturally integrate **approximately 80%** of 'Ranked Job Requirements' keywords throughout the resume (Summary, Skills, Experience bullets, Project bullets). Distribute contextually.
-            4.  **Human Readability & Impact:** Maintain clarity, professionalism (`{tone}`), use strong action verbs, and quantify achievements.
+            1.  **Prioritize Selected Highlights:** When generating the `## Experience` and `## Projects` sections, **ensure the content listed under `Selected Experience Highlights` and `Selected Project Highlights` (if provided below) is included and integrated naturally.** These represent the most relevant points.
+            2.  **Precise Formatting:** Adhere STRICTLY to the Markdown formatting examples given for each section (H2 headings, Contact Info, Skills, Experience/Project structure with newlines).
+            3.  **High ATS Score:** Ensure the structure remains parseable. Use only standard Markdown elements as specified.
+            4.  **Keyword Optimization:** Naturally integrate  approximately 90% of 'Ranked Job Requirements' keywords throughout the resume (Summary, Skills, Experience bullets, Project bullets). Distribute contextually.
+            5.  **Human Readability & Impact:** Maintain clarity, professionalism (`{tone}`), use strong action verbs,and quantify achievements.
 
             **CRITICAL ATS OPTIMIZATION & CONTENT RULES (Follow Strictly with Examples):**
             1.  **Standard Section Headings (H2):** Use **EXACTLY** `##` (Markdown H2) for: `## Summary`, `## Skills`, `## Experience`, `## Projects`, `## Certifications`. Optional standard sections (`## Education`, `## Awards`) also use `##`.
@@ -1026,63 +1346,51 @@ async def generate_application_text_streamed(
                 * First line: Job Header, formatted **EXACTLY** like this (bold title/co/loc, pipe separators, dates NOT bolded at end):
                   `**Data Analyst, Fintech | Open Financial Technology Pvt. Ltd | Bengaluru, Karnataka, India** (Mar 2022 – Aug 2023)`
                 * **CRITICAL:** There **MUST** be a **newline character** immediately after the entire Job Header line (including the dates) and **BEFORE** the first `*` bullet point below it.
-                * Subsequent lines: Accomplishments as **standard Markdown bullet points (`* `)** starting with a strong action verb.
+                * Subsequent lines: Accomplishments as **standard Markdown bullet points (`* `)** starting with a strong action verb. **Prioritize incorporating content from 'Selected Experience Highlights' here.** Aim for relevant bullets per job, using the highlights as the main source.
                 * Follow this multi-line structure **EXACTLY**:
                 ```markdown
                 ## Experience
 
                 **Data Analyst, Fintech | Open Financial Technology Pvt. Ltd | Bengaluru, Karnataka, India** (Mar 2022 – Aug 2023)
-                * Designed and implemented a Delta Lake architecture on Azure Data Lake Storage (ADLS Gen2) for 1TB+ daily Payments data, enabling ACID transactions and schema enforcement.
-                * Developed and optimized complex SQL queries for reporting, reducing query execution time by 30%.
-                * [Another accomplishment starting with an action verb...]
+
+                * [Bullet incorporating selected highlight 1...]
+                * [Bullet incorporating selected highlight 2...]
+                * [Another relevant accomplishment, possibly derived from highlights or context...]
 
                 **[Previous Job Title] | [Previous Company] | [Previous Location]** ([Start Date] – [End Date])
-                * [Accomplishment starting with action verb...]
-                * [Another accomplishment...]
+
+                * [Bullet incorporating selected highlight 3...]
+                * [...]
                 ```
             7.  **Projects Section Format (MANDATORY EXAMPLE + NEWLINE):** For EACH entry under `## Projects`:
                 * First line: Project Header, formatted **EXACTLY** like this (bold project name only):
                   `**COVID-19 Data Pipeline and Analysis with Azure Data Factory**`
                 * **CRITICAL:** There **MUST** be a **newline character** immediately after the Project Header line and **BEFORE** the first `*` bullet point below it.
-                * Subsequent lines: Accomplishments/details as **standard Markdown bullet points (`* `)** starting with a strong action verb or description.
+                * Subsequent lines: Accomplishments/details as **standard Markdown bullet points (`* `)**. **Use the content provided in 'Selected Project Highlights' to construct these entries.**
                 * Follow this multi-line structure **EXACTLY**:
                 ```markdown
                 ## Projects
 
-                **COVID-19 Data Pipeline and Analysis with Azure Data Factory**
-                * Automated ETL workflows using Azure Data Factory (ADF), Data Flows, and Databricks, reducing manual effort by 40%.
-                * Implemented robust pipeline security using Managed Identities/Key Vault within the Azure cloud infrastructure.
-                * Streamlined deployments via Azure DevOps CI/CD and improved data reliability by 30% with Azure Monitor alerts.
+                **[Project Name from Selected Highlight 1]**
 
-                **[Another Project Name]**
-                * [Accomplishment/detail starting with action verb or description...]
+                * [Detail from selected highlight 1...]
+                * [Another detail from selected highlight 1...]
+
+                **[Project Name from Selected Highlight 2]**
+
+                * [Detail from selected highlight 2...]
                 ```
             8.  **Certifications Section Format (MANDATORY EXAMPLE):** If `## Certifications` section used, list ALL certs as a **single, comma-separated string** below heading. **NO BULLETS.**
                 ```markdown
                 ## Certifications
                 Azure Data Engineer Associate, Azure Data Fundamentals, IBM Data Science Professional Certificate, Tableau Desktop Specialist
                 ```
-            9.  **ATS-Friendly Formatting ONLY:** Use `* ` bullets ONLY as shown in Skills, Experience, Projects examples. AVOID tables, columns, images, icons, unusual symbols, HTML. Use standard dates (Month Year – Month Year/Present).
-            10. **Content Quality & Conciseness:** Be clear, professional (`{tone}`). Start bullets with action verbs. Quantify results. **AVOID redundant statements** (e.g., "* Meets degree requirement."). Focus on impact.
+            9.  **ATS-Friendly Formatting ONLY:** Use `* ` bullets ONLY as shown. AVOID tables, columns, images, icons, unusual symbols, HTML. Use standard dates.
+            10. **Content Quality & Conciseness:** Be clear, professional (`{tone}`). Start bullets with action verbs. Quantify results. AVOID redundant statements. Focus on impact.
 
-            **Task:** Generate the ATS-Optimized Resume draft in Markdown, adhering **STRICTLY** to ALL rules and **EXACT FORMATTING EXAMPLES**, especially the required **newlines** after Experience/Project headers before the bullets. Ensure 1-2 sentence summary limit and ~80% keyword coverage/distribution. Output only Markdown.
+            **Task:** Generate the ATS-Optimized Resume draft in Markdown, adhering **STRICTLY** to ALL rules and **EXACT FORMATTING EXAMPLES**, **especially prioritizing the selected highlights** provided in the context for Experience and Projects sections. Ensure 1-2 sentence summary limit and ~80% keyword coverage/distribution. Output only Markdown.
             """
-            critique_criteria = f"""
-            **ATS & Content Critique Criteria (Output brief bullet points ONLY, check against examples):**
-            1.  **Overall Structure & Formatting Compliance:**
-                * **Section Headings:** Uses **EXACTLY** `## Summary`, `## Skills`, etc.? (Yes/No/Incorrect Heading)
-                * **Contact Info Format:** Top, left-aligned, matches `# Name \\n Contact Line` format? **NO CENTERING?** (Yes/No/Incorrect Format)
-                * **Skills Section Format:** Adheres **EXACTLY** to `* **Category:** Skill1, ...` format per example? (Yes/No/Incorrect Format)
-                * **Experience Section Format:** Headers match **EXACTLY** `**Title | Co | Loc** (Dates)`? Accomplishments use `* ` bullets below? **Crucially, is there a NEWLINE between the header line and the first bullet?** (Yes/No/Incorrect Header/Incorrect Bullets/Missing Newline)
-                * **Projects Section Format:** Headers match **EXACTLY** `**Project Name**`? Accomplishments use `* ` bullets below? **Crucially, is there a NEWLINE between the header line and the first bullet?** (Yes/No/Incorrect Header/Incorrect Bullets/Missing Newline)
-                * **Certifications Format (If Present):** If `## Certifications` exists, is content a single comma-separated string below heading (NO bullets)? (Yes/No/Incorrect Format/NA)
-                * **Simple Formatting:** Consistent standard dates? **Absence** of tables, columns, complex symbols, HTML? (Yes/No/Issues Found)
-            2.  **Keyword Optimization Assessment:** (Check coverage %, distribution, natural integration)
-            3.  **Content Quality & Clarity:** (Check Summary length/content, Experience/Project bullet quality, absence of redundant statements, readability/tone)
-            4.  **Requirement Alignment:** (Check if content aligns with top JD requirements)
-            """
-            # Note: Keyword/Content/Alignment checks remain similar, focus is on formatting critique update above.
-            # Adding full critique text for completeness, though only format part changed significantly:
+            # Critique criteria remains mostly the same, but we can add checks for highlight usage
             critique_criteria = f"""
             **ATS & Content Critique Criteria (Output brief bullet points ONLY, check against examples):**
             1.  **Overall Structure & Formatting Compliance:**
@@ -1101,13 +1409,15 @@ async def generate_application_text_streamed(
                 * **Summary Length:** Is `## Summary` **STRICTLY 1 or 2 sentences**? (Yes/No + Count)
                 * **Summary Content:** Concise, tailored, impactful, includes top keywords within limit? (Yes/No/Needs Improvement)
                 * **Experience/Project Bullets:** Start with strong action verbs? Quantified results present? Impact clear? Skills demonstrated? (Strong/Moderate/Weak)
+                * **Selected Highlight Usage:** Does the generated Experience/Projects section **clearly incorporate content from the provided 'Selected Highlights'**? (Yes/Partially/No/NA) # <-- NEW CHECK
                 * **Redundant Statements:** Avoids obvious statements like "* Meets degree requirement."? (Yes/No - Redundant statements found)
                 * **Overall Readability & Tone:** Clear, concise, professional (`{tone}`), error-free? (Good/Fair/Poor)
             4.  **Requirement Alignment:** Content (esp. Experience/Project bullets) strongly evidences suitability for *top-ranked* job requirements? (Strong/Moderate/Weak)
             """
             refinement_instructions = f"""
             * **Address ALL Critique Points:** Focus meticulously on fixing any deviations from the **EXACT FORMATTING EXAMPLES**, **especially the required NEWLINES after Experience/Project headers**. Also fix keyword issues, summary length, content weaknesses, and remove redundant statements.
-            * **Fix Formatting to Match Examples:** Correct Contact Info format (NO CENTERING). Ensure Skills format is `* **Category:** ...`. Ensure Experience headers are `**Title | Co | Loc** (Dates)` with a **NEWLINE** then `* ` bullets below. Ensure Project headers are `**Project Name**` with a **NEWLINE** then `* ` bullets below. Ensure Certifications is a comma-separated string (NO bullets). Remove ALL other ATS-unfriendly formatting. # <-- Emphasize Newline Fix
+            * **Improve Highlight Incorporation:** If critique indicates poor usage of 'Selected Highlights', revise the Experience and Project sections to better feature that prioritized content. # <-- NEW INSTRUCTION
+            * **Fix Formatting to Match Examples:** Correct Contact Info format (NO CENTERING). Ensure Skills format is `* **Category:** ...`. Ensure Experience headers are `**Title | Co | Loc** (Dates)` with a **NEWLINE** then `* ` bullets below. Ensure Project headers are `**Project Name**` with a **NEWLINE** then `* ` bullets below. Ensure Certifications is a comma-separated string (NO bullets). Remove ALL other ATS-unfriendly formatting.
             * **Optimize Keyword Coverage & Distribution:** If coverage < ~80% or distribution poor, revise Summary, Skills, and Experience/Project bullets to naturally weave in more relevant JD keywords. Ensure spread and context. Avoid stuffing.
             * **MANDATORY Summary Length Correction:** If critique found `## Summary` > 2 sentences, **MUST shorten to exactly 1-2 sentences**. Be ruthless. Retain essential hook/keywords.
             * **Improve Content Quality:** Strengthen action verbs in bullets. Add quantification. Enhance clarity. Improve skill demonstration within bullets. **Remove any identified redundant statements.**
@@ -1167,12 +1477,18 @@ async def generate_application_text_streamed(
 
         # --- Construct Full Prompts ---
         # Base context shared by draft and refinement prompts
+        # ADD the selected highlights context conditionally for resumes
         base_context = f"""
         **Candidate:** {name} ({email})
         **Target Job:** {jd_title} at {jd_company}
-        **Ranked Job Requirements (Most Important First):**\n{ranked_req_str}
-        **Parsed Candidate Resume Sections (Potentially Truncated):**\n{resume_sections_str}
-        **Extracted Candidate Resume Achievements (Sample):**\n{achievements_sample_str}
+        **Ranked Job Requirements (Most Important First):**
+{ranked_req_str}
+        **Parsed Candidate Resume Sections (Use for context, but prioritize Selected Highlights below for Exp/Proj):**
+{resume_sections_str}
+        **Extracted Candidate Resume Achievements (Sample - General Context):**
+{achievements_sample_str}
+        {selected_bullets_context_str if generation_type == TYPE_RESUME and selected_bullets_context_str else ""}
+        {selected_projects_context_str if generation_type == TYPE_RESUME and selected_projects_context_str else ""}
         **Desired Tone:** {tone}
         **Potentially Missing Keywords (Resume vs. JD):** {missing_keywords_str}
         **Job Description Company Context:** {company_context_jd}
@@ -1199,21 +1515,17 @@ async def generate_application_text_streamed(
                 prompt=draft_prompt,
                 api_key=google_api_key,
                 model_name=GENERATION_MODEL_NAME,
-                temperature=0.6 # Adjust temp as needed for creative draft
+                temperature=0.6 # Adjust temp as needed
             )
             if isinstance(initial_draft_result, str) and initial_draft_result.strip():
                 initial_draft = initial_draft_result.strip()
-                # Optionally yield a preview or confirmation
-                # yield f"--- Initial draft generated (length: {len(initial_draft)} chars) ---\n"
             else:
-                 raise ValueError("Initial draft generation failed or returned empty.")
+                raise ValueError("Initial draft generation failed or returned empty.")
         except Exception as draft_err:
-             yield f"\n--- ERROR: Initial {final_doc_type_name} draft generation failed: {draft_err} ---\n"
-             logging.error(f"Initial {final_doc_type_name} draft generation failed.", exc_info=True)
-             # Attempt to get underlying error context if available (e.g., safety block from helper)
-             # Check common_data for earlier errors too.
-             yield "\n--- Generation stopped due to draft failure. ---\n"
-             return # Stop generation
+            yield f"\n--- ERROR: Initial {final_doc_type_name} draft generation failed: {draft_err} ---\n"
+            logging.error(f"Initial {final_doc_type_name} draft generation failed.", exc_info=True)
+            yield "\n--- Generation stopped due to draft failure. ---\n"
+            return # Stop generation
 
 
         # --- Step 4: Generate Critique ---
@@ -1224,10 +1536,13 @@ async def generate_application_text_streamed(
         **Critique Task:** Evaluate the initial draft below based *strictly* on the critique criteria provided. Output only brief, specific bullet points addressing each criterion. Do not add explanations.
 
         **Context for Critique:**
-        * **Target Job Requirements (Ranked):**\n{ranked_req_str}
+        * **Target Job Requirements (Ranked):**
+{ranked_req_str}
         * **Potentially Missing Keywords Attempted:** {missing_keywords_str}
         * **Desired Tone:** {tone}
         {f'* **JD Company Context:** {company_context_jd}' if generation_type == TYPE_COVER_LETTER else ''}
+        {f'* **Selected Experience Highlights:** {selected_bullets_context_str}' if generation_type == TYPE_RESUME and selected_bullets_context_str else ''}
+        {f'* **Selected Project Highlights:** {selected_projects_context_str}' if generation_type == TYPE_RESUME and selected_projects_context_str else ''}
         {external_company_prompt_section if generation_type == TYPE_COVER_LETTER else ""}
 
         **Initial {final_doc_type_name} Draft to Critique:**
@@ -1237,34 +1552,34 @@ async def generate_application_text_streamed(
 
         **Critique Criteria to Address (Output Bullets ONLY):**
         {critique_criteria}
-        """
+        """ # Added selected context to critique prompt
         try:
             # Use helper function for critique LLM call
             critique_result = await _call_llm_async(
                 prompt=critique_prompt,
                 api_key=google_api_key,
-                model_name=EXTRACTION_MODEL_NAME, # Use extraction model for focused critique
-                temperature=0.15 # Low temp for factual critique
+                model_name=EXTRACTION_MODEL_NAME, # Use extraction model
+                temperature=0.15 # Low temp
             )
             if isinstance(critique_result, str) and critique_result.strip():
                 critique = critique_result.strip()
-                yield critique + "\n" # Show critique in stream for user visibility
+                yield critique + "\n" # Show critique in stream
             else:
-                 logging.warning(f"Critique generation for {final_doc_type_name} returned empty or non-string. Proceeding without specific critique.")
-                 yield f"\n--- WARNING: Critique generation failed or was empty. Attempting refinement based on initial draft and instructions only. ---\n"
+                logging.warning(f"Critique generation for {final_doc_type_name} returned empty or non-string. Proceeding without specific critique.")
+                yield f"\n--- WARNING: Critique generation failed or was empty. Attempting refinement based on initial draft and instructions only. ---\n"
         except Exception as critique_err:
-             yield f"\n--- ERROR: Critique generation failed: {critique_err} ---\n"
-             logging.error(f"Critique generation for {final_doc_type_name} failed.", exc_info=True)
-             yield f"\n--- Proceeding with refinement based on initial draft and instructions only. ---\n"
+            yield f"\n--- ERROR: Critique generation failed: {critique_err} ---\n"
+            logging.error(f"Critique generation for {final_doc_type_name} failed.", exc_info=True)
+            yield f"\n--- Proceeding with refinement based on initial draft and instructions only. ---\n"
 
 
         # --- Step 5: Generate Final Refined Version (Streaming) ---
         yield f"\n--- Generating final refined {final_doc_type_name}... ---\n"
         # Construct refinement prompt using initial draft and critique
         refinement_prompt = f"""
-        **Refinement Task:** Generate the **FINAL, REVISED** {final_doc_type_name}. Your goal is to meticulously address the critique points provided below (if any) AND strictly adhere to ALL original instructions and rules outlined in the base context. Pay close attention to fixing any ATS violations, summary length issues (for resumes), keyword coverage/distribution problems, and content weaknesses identified. Produce a polished, complete final document.
+        **Refinement Task:** Generate the **FINAL, REVISED** {final_doc_type_name}. Your goal is to meticulously address the critique points provided below (if any) AND strictly adhere to ALL original instructions and rules outlined in the base context (including prioritizing selected highlights for Resumes). Produce a polished, complete final document.
 
-        {base_context}
+        {base_context} # Includes selected highlights if applicable
 
         **Initial {final_doc_type_name} Draft:**
         ---
@@ -1286,7 +1601,7 @@ async def generate_application_text_streamed(
                 prompt=refinement_prompt,
                 api_key=google_api_key,
                 model_name=GENERATION_MODEL_NAME, # Use generation model
-                temperature=0.5, # Temp for final creative refinement, adjust as needed
+                temperature=0.5, # Adjust temp as needed
                 stream=True
             )
 
@@ -1294,19 +1609,16 @@ async def generate_application_text_streamed(
             stream_produced_output = False
             if hasattr(final_stream_generator, '__aiter__'):
                 async for chunk in final_stream_generator:
-                     # Ensure chunk is string before yielding
-                     if isinstance(chunk, str):
-                          yield chunk
-                          stream_produced_output = True
-                     else:
-                          logging.warning(f"Received non-string chunk in final stream: {type(chunk)}")
-                          # Optionally yield an error marker or skip
-                          # yield f"[STREAM ERROR: Non-string chunk type {type(chunk)}]"
+                    # Ensure chunk is string before yielding
+                    if isinstance(chunk, str):
+                        yield chunk
+                        stream_produced_output = True
+                    else:
+                        logging.warning(f"Received non-string chunk in final stream: {type(chunk)}")
 
                 if not stream_produced_output:
-                     # Handle case where stream finishes without yielding anything
-                     yield f"\n--- WARNING: Final {final_doc_type_name} generation stream finished without producing output. This might indicate an issue with the prompt, model response (e.g., safety block not caught), or stream handling. ---"
-                     logging.warning(f"Final {final_doc_type_name} stream was empty. Check prompt length/content and model status.")
+                    yield f"\n--- WARNING: Final {final_doc_type_name} generation stream finished without producing output. Check for potential prompt/model issues. ---"
+                    logging.warning(f"Final {final_doc_type_name} stream was empty.")
             else:
                 # Handle cases where streaming call unexpectedly didn't return a generator
                 error_message = f"\n--- ERROR: Expected stream, received unexpected type ({type(final_stream_generator)}) during final {final_doc_type_name} generation. ---"
@@ -1314,10 +1626,10 @@ async def generate_application_text_streamed(
                 yield error_message
 
         except Exception as final_gen_err:
-             yield f"\n--- ERROR: Final {final_doc_type_name} generation failed during streaming: {final_gen_err} ---\n"
-             logging.error(f"Final {final_doc_type_name} generation/streaming failed.", exc_info=True)
-             yield "\n--- Generation stopped due to final refinement failure. ---\n"
-             return
+            yield f"\n--- ERROR: Final {final_doc_type_name} generation failed during streaming: {final_gen_err} ---\n"
+            logging.error(f"Final {final_doc_type_name} generation/streaming failed.", exc_info=True)
+            yield "\n--- Generation stopped due to final refinement failure. ---\n"
+            return
 
 
     # --- Global Exception Handler for the entire function ---
@@ -1328,7 +1640,6 @@ async def generate_application_text_streamed(
         # Provide available context if helpful for debugging
         if common_data:
             yield f"\nDebug Info (Preparation Stage Error): {common_data.get('error', 'None')}"
-            # Avoid yielding large data structures, maybe just keys or counts
             yield f"\nDebug Info (JD Data Keys): {list(common_data.get('jd_data', {}).keys())}"
             yield f"\nDebug Info (Resume Data Keys): {list(common_data.get('resume_data', {}).keys())}"
         yield "\n--- Generation stopped due to critical pipeline error. ---"
