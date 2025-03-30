@@ -1345,9 +1345,9 @@ async def generate_application_text_streamed(
             6.  **Experience Section Format (MANDATORY EXAMPLE + NEWLINE):** For EACH entry under `## Experience`:
                 * First line: Job Header, formatted **EXACTLY** like this (bold title/co/loc, pipe separators, dates NOT bolded at end):
                   `**Data Analyst, Fintech | Open Financial Technology Pvt. Ltd | Bengaluru, Karnataka, India** (Mar 2022 – Aug 2023)`
-                * **CRITICAL:** There **MUST** be a **newline character** immediately after the entire Job Header line (including the dates) and **BEFORE** the first `*` bullet point below it.
+                * **CRITICAL - ENSURE BLANK LINE:** There **MUST** be a **blank line** (representing a single newline character `\n` in the raw output) immediately after the entire Job Header line (including the dates) and **BEFORE** the first `*` bullet point below it. **DO NOT** put the first bullet on the line directly following the header.
                 * Subsequent lines: Accomplishments as **standard Markdown bullet points (`* `)** starting with a strong action verb. **Prioritize incorporating content from 'Selected Experience Highlights' here.** Aim for relevant bullets per job, using the highlights as the main source.
-                * Follow this multi-line structure **EXACTLY**:
+                * Follow this multi-line structure **EXACTLY**, paying close attention to the blank line after the header:
                 ```markdown
                 ## Experience
 
