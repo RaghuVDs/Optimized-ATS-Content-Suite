@@ -509,22 +509,48 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
 
 # --- Enhanced JD Extraction (including Company Context) ---
 async def _extract_structured_data_enhanced_jd(text: str, google_api_key: str) -> Dict[str, Any]:
-    """Extracts structured data from JD, including company context, with improved validation."""
+    """
+    Extracts structured data from JD, including company context and CATEGORIZED keywords/requirements,
+    with improved validation.
+    """
+    # UPDATED Schema with specific categories
     schema = {
         "job_title": "string (e.g., 'Senior Software Engineer')",
-        "company_name": "string (e.g., 'Tech Innovations Ltd.')",
-        "key_skills_requirements": ["string (List distinct technical skills like 'Python', 'AWS', tools like 'Docker', platforms like 'Linux', required experience like '5+ years Java', AND explicitly mentioned soft skills like 'strong communication', 'teamwork', 'leadership')"],
+        "company_name": "string (e.g., 'Tech Innovations Inc.')",
         "location": "string (e.g., 'Remote', 'San Francisco, CA', 'Hybrid - London')",
         "summary": "string (A brief, 1-2 sentence high-level summary or objective of the role as described in the JD)",
+        "technical_skills": ["string (List specific programming languages, frameworks, libraries, databases, relevant concepts like 'data structures', 'API design')"],
+        "tools_platforms": ["string (List specific software tools, cloud platforms (AWS, Azure, GCP), OS, hardware, CI/CD tools like 'Docker', 'Kubernetes', 'Jira', 'Salesforce')"],
+        "methodologies": ["string (List development/project management methodologies like 'Agile', 'Scrum', 'Waterfall', 'Lean', 'Six Sigma')"],
+        "experience_qualifications": ["string (List required years of experience, specific types of experience like 'experience managing teams', educational degree requirements like 'Bachelor's degree in CS')"],
+        "certifications": ["string (List specific certifications mentioned, e.g., 'AWS Certified Solutions Architect', 'PMP', 'CISSP')"],
+        "soft_skills": ["string (List explicitly mentioned soft skills or interpersonal traits like 'strong communication', 'teamwork', 'leadership', 'problem-solving')"],
+        "domain_knowledge": ["string (List specific industry or subject matter expertise mentioned, e.g., 'experience in finance sector', 'knowledge of healthcare regulations', 'understanding of e-commerce platforms')"],
         "company_values_mission_challenges": "string (Concise notes capturing mentioned company culture points like 'fast-paced environment', stated mission/values, or specific challenges/goals the role addresses, e.g., 'scaling our platform', 'driving innovation in AI')"
     }
-    instructions = "Carefully analyze the Job Description text provided. Extract the requested information accurately, adhering to the specified format for each field. For 'key_skills_requirements', create a comprehensive list including technical skills (be specific, e.g., 'Python 3.x', 'React.js'), tools/platforms ('Kubernetes', 'Azure DevOps'), specific experience levels ('minimum 3 years'), and any explicitly stated soft skills ('excellent presentation skills', 'ability to lead projects'). For 'company_values_mission_challenges', capture the essence of the company's self-description regarding its work environment, goals, values, or the problems this role is intended to solve. Return null if information for a field cannot be found."
+
+    # UPDATED Instructions reflecting the new schema
+    instructions = f"""
+Carefully analyze the Job Description text provided. Extract the requested information accurately, populating the fields according to the schema below.
+
+Key Extraction Details:
+- For each list-based field (`technical_skills`, `tools_platforms`, `methodologies`, `experience_qualifications`, `certifications`, `soft_skills`, `domain_knowledge`):
+    - Extract distinct items mentioned in the JD that fit the category description. Be specific (e.g., 'Python 3.x', 'React.js', '5+ years Java experience', 'Azure DevOps', 'excellent presentation skills').
+    - If no relevant items are found for a category, return an empty list `[]` for that key. Do NOT return null for list fields if empty, use `[]`.
+- For string fields (`job_title`, `company_name`, `location`, `summary`, `company_values_mission_challenges`):
+    - Extract the relevant text as accurately as possible.
+    - For `company_values_mission_challenges`, capture the essence of the company's self-description regarding its work environment, goals, values, or the problems this role is intended to solve.
+    - If information for a string field cannot be reasonably determined from the text, return `null`.
+- Prioritize skills/qualifications explicitly mentioned as mandatory, required, or essential.
+- Return ONLY a valid JSON object adhering strictly to the schema structure.
+"""
 
     prompt = f"""
     Analyze the following Job Description and extract information according to the schema provided below.
-    Return ONLY a valid JSON object adhering strictly to the schema structure. Use null for any field where information is not present in the text.
+    Return ONLY a valid JSON object adhering strictly to the schema structure. Use `null` for non-list fields where information is not present, and `[]` (empty list) for list fields where no items are found.
 
-    Instructions: {instructions}
+    Instructions:
+    {instructions}
 
     Schema:
     ```json
@@ -540,6 +566,15 @@ async def _extract_structured_data_enhanced_jd(text: str, google_api_key: str) -
     """
     # Default result structure
     result = {"data": {}, "error": None}
+    # Define list keys for easier validation later
+    list_keys = [
+        "technical_skills", "tools_platforms", "methodologies",
+        "experience_qualifications", "certifications", "soft_skills", "domain_knowledge"
+    ]
+    string_keys = [
+        "job_title", "company_name", "location", "summary", "company_values_mission_challenges"
+    ]
+
 
     try:
         # Use the helper function for the LLM call
@@ -564,40 +599,56 @@ async def _extract_structured_data_enhanced_jd(text: str, google_api_key: str) -
 
                 # --- Schema Validation and Normalization ---
                 validated_data = {}
-                expected_keys = schema.keys()
+                expected_keys = list(schema.keys()) # Get all keys from the defined schema
 
                 for key in expected_keys:
                     if key not in extracted_data:
-                         logging.warning(f"JD Extraction: Key '{key}' missing from LLM response. Setting to null.")
-                         validated_data[key] = None
-                         continue # Skip further checks for this missing key
+                        logging.warning(f"JD Extraction: Key '{key}' missing from LLM response. Setting to default (null or []).")
+                        validated_data[key] = [] if key in list_keys else None # Default based on type
+                        continue # Skip further checks for this missing key
 
                     value = extracted_data[key]
 
-                    # Validate/normalize 'key_skills_requirements' specifically
-                    if key == "key_skills_requirements":
+                    # --- Validate/normalize LIST fields ---
+                    if key in list_keys:
                         if value is None:
-                             validated_data[key] = []
+                             # LLM might return null instead of [], normalize to []
+                            validated_data[key] = []
+                            logging.info(f"JD Extraction: Key '{key}' was null, normalized to empty list [].")
                         elif isinstance(value, list):
-                             # Ensure all items are non-empty strings
-                             validated_data[key] = [str(item).strip() for item in value if isinstance(item, (str, int, float)) and str(item).strip()]
+                            # Ensure all items are non-empty strings, clean and deduplicate
+                            sanitized_list = sorted(list(set(
+                                str(item).strip()
+                                for item in value
+                                if isinstance(item, (str, int, float)) and str(item).strip() # Check type and non-empty after strip
+                            )))
+                            validated_data[key] = sanitized_list
                         elif isinstance(value, str):
-                             # Attempt to split if it's a single string
-                             logging.warning(f"JD Extraction: '{key}' was a string, attempting to split.")
-                             validated_data[key] = [item.strip() for item in re.split(r'[,\n;•*-]', value) if item.strip()]
+                            # LLM returned a string instead of a list for a list field.
+                            # Splitting is unreliable here as we don't know the intended category.
+                            # Log a warning and return empty list for this field.
+                            logging.warning(f"JD Extraction: Key '{key}' expected a list, but received a string: '{value[:100]}...'. Setting to empty list []. LLM may need prompt refinement if this persists.")
+                            validated_data[key] = [] # Default to empty list on type mismatch
                         else:
-                             logging.warning(f"JD Extraction: Invalid type for '{key}' ({type(value)}). Setting to empty list.")
-                             validated_data[key] = []
-                    # Validate other fields are strings or null
-                    elif key in ["job_title", "company_name", "location", "summary", "company_values_mission_challenges"]:
-                        if value is None or isinstance(value, str):
-                             validated_data[key] = value.strip() if isinstance(value, str) else None
+                            # Unexpected type for a list field
+                            logging.warning(f"JD Extraction: Invalid type for list key '{key}' ({type(value)}). Setting to empty list [].")
+                            validated_data[key] = []
+
+                    # --- Validate/normalize STRING fields ---
+                    elif key in string_keys:
+                        if value is None:
+                            validated_data[key] = None # Accept null
+                        elif isinstance(value, str):
+                             # Accept string, strip whitespace
+                            validated_data[key] = value.strip()
                         else:
-                             logging.warning(f"JD Extraction: Invalid type for '{key}' ({type(value)}). Setting to null.")
-                             validated_data[key] = None
+                            # Unexpected type for a string field
+                            logging.warning(f"JD Extraction: Invalid type for string key '{key}' ({type(value)}). Setting to null.")
+                            validated_data[key] = None
                     else:
                          # Should not happen if schema keys match code, but handle defensively
-                         validated_data[key] = value
+                        logging.error(f"JD Extraction: Encountered unexpected key '{key}' during validation loop. This indicates a potential code/schema mismatch.")
+                        validated_data[key] = value # Assign raw value if unsure
 
                 logging.info("Enhanced structured data extracted and validated for JD.")
                 result["data"] = validated_data
@@ -605,20 +656,20 @@ async def _extract_structured_data_enhanced_jd(text: str, google_api_key: str) -
 
             # --- Handle JSON Parsing/Validation Errors ---
             except (json.JSONDecodeError, ValueError) as json_err:
-                 error_msg = f"Failed to parse/validate JD JSON response: {json_err}"
-                 logging.error(f"{error_msg}. Raw Response Snippet: {raw_json_string[:500]}...")
-                 result["error"] = error_msg
-                 result["data"] = {} # Ensure data is empty on error
+                error_msg = f"Failed to parse/validate JD JSON response: {json_err}"
+                logging.error(f"{error_msg}. Raw Response Snippet: {raw_json_string[:500]}...")
+                result["error"] = error_msg
+                result["data"] = {} # Ensure data is empty on error
             except Exception as e_inner:
-                 error_msg = f"Unexpected error processing JD JSON: {e_inner}"
-                 logging.error(error_msg, exc_info=True)
-                 result["error"] = error_msg
-                 result["data"] = {}
+                error_msg = f"Unexpected error processing JD JSON: {e_inner}"
+                logging.error(error_msg, exc_info=True)
+                result["error"] = error_msg
+                result["data"] = {}
         else:
-             # Handle case where LLM call did not return a string
-             logging.error(f"Unexpected return type from _call_llm_async for JD extraction: {type(response_text)}")
-             result["error"] = "Error: LLM call for JD extraction did not return text."
-             result["data"] = {}
+            # Handle case where LLM call did not return a string
+            logging.error(f"Unexpected return type from _call_llm_async for JD extraction: {type(response_text)}")
+            result["error"] = "Error: LLM call for JD extraction did not return text."
+            result["data"] = {}
 
     # --- Handle Outer LLM Call Errors ---
     except Exception as e:
@@ -977,17 +1028,19 @@ async def _select_top_projects_llm(
 
     return result
 
-
-# --- Data Preparation (Async) ---
 async def _prepare_common_data(job_description: str, resume_content: str, google_api_key: str) -> Dict[str, Any]:
-    """Orchestrates enhanced data extraction (JD), parsing (Resume), ranking (JD reqs), and keyword comparison."""
+    """
+    Orchestrates enhanced data extraction (JD with categories), parsing (Resume),
+    ranking (selected JD requirements), and keyword comparison.
+    Ensures consistency in handling the structured JD data.
+    """
     # Initialize results with defaults and include raw inputs
     results = {
         "error": None,
         "jd_data": {}, # Will hold structured JD { "data": {...}, "error": ... }
         "resume_data": {}, # Will hold structured Resume { "sections": ..., "keywords": ..., "achievements": ..., "error": ... }
-        "ranked_jd_requirements": [], # List of ranked requirement strings
-        "missing_keywords_from_resume": [], # List of keywords in JD but not Resume
+        "ranked_jd_requirements": [], # List of ranked requirement strings (selected categories)
+        "missing_keywords_from_resume": [], # List of keywords in selected JD categories but not Resume
         "raw_resume": resume_content,
         "raw_jd": job_description,
         # Store intermediate results for debugging if needed
@@ -998,100 +1051,126 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
     task_errors = [] # Collect errors from sequential steps
 
     try:
-        # --- STEP 1: Extract structured data from Job Description ---
+        # --- STEP 1: Extract structured data from Job Description (Enhanced with Categories) ---
         logging.info("Data Prep Step 1: Extracting structured data from Job Description...")
         jd_extraction_result = await _extract_structured_data_enhanced_jd(job_description, google_api_key)
         results["_debug_jd_extraction_result"] = jd_extraction_result # Store for debug
+
         if jd_extraction_result.get("error"):
             task_errors.append(f"JD Extraction failed: {jd_extraction_result['error']}")
             results["jd_data"] = {} # Ensure default structure on error
         else:
-            results["jd_data"] = jd_extraction_result.get("data", {}) # Store the actual data dict
+            # Store the actual data dict which contains categorized keys
+            results["jd_data"] = jd_extraction_result.get("data", {})
             logging.info("Data Prep Step 1: JD Extraction successful.")
-
 
         # --- STEP 2: Parse Resume ---
         logging.info("Data Prep Step 2: Parsing Resume...")
         resume_parsing_result = await parse_resume_advanced_llm(resume_content, google_api_key)
         results["_debug_resume_parsing_result"] = resume_parsing_result # Store for debug
+
         if resume_parsing_result.get("error"):
             task_errors.append(f"Resume Parsing failed: {resume_parsing_result['error']}")
-            # Keep raw text in sections if parsing fails, clear structured data
             results["resume_data"] = {
-                "sections": resume_parsing_result.get("sections", {"full_text": resume_content}), # Try to keep sections
+                "sections": resume_parsing_result.get("sections", {"full_text": resume_content}),
                 "extracted_keywords": [],
                 "achievements": [],
-                "error": resume_parsing_result.get("error") # Propagate error info
+                "error": resume_parsing_result.get("error")
             }
         else:
-            # Store the successful parsing result directly
             results["resume_data"] = resume_parsing_result # Contains sections, keywords, achievements, error=None
             logging.info("Data Prep Step 2: Resume Parsing successful.")
 
+        # --- STEP 3: Rank JD Requirements (Using Combined Categories) ---
+        logging.info("Data Prep Step 3: Combining and Ranking JD Requirements...")
+        extracted_jd_data = results.get("jd_data", {}) # Use the extracted data from Step 1
 
-        # --- STEP 3: Rank JD Requirements ---
-        logging.info("Data Prep Step 3: Ranking JD Requirements...")
-        # Rank requirements only if successfully extracted in Step 1
-        extracted_requirements = results.get("jd_data", {}).get("key_skills_requirements", [])
-        if extracted_requirements and isinstance(extracted_requirements, list):
-             ranking_result = await _rank_jd_requirements(extracted_requirements, google_api_key)
-             results["_debug_ranking_result"] = ranking_result # Store for debug
-             if ranking_result.get("error"):
-                  task_errors.append(f"JD Ranking error: {ranking_result['error']}")
-                  # Keep the unranked list from JD extraction if ranking fails
-                  results["ranked_jd_requirements"] = extracted_requirements
-                  logging.warning(f"JD Ranking failed, using unranked requirements. Error: {ranking_result['error']}")
-             else:
-                  results["ranked_jd_requirements"] = ranking_result.get("ranked_list", [])
-                  logging.info("Data Prep Step 3: JD Ranking successful.")
+        # --- Define which categories to combine for ranking ---
+        # Adjust this list based on which categories you deem most important for ranking
+        categories_to_rank = [
+            "technical_skills",
+            "tools_platforms",
+            "experience_qualifications",
+            "certifications",
+            "methodologies",
+             #"soft_skills", # Optional: Include soft skills if desired for ranking
+             #"domain_knowledge" # Optional: Include domain knowledge
+        ]
+
+        # Combine items from the selected categories into a single list
+        combined_jd_reqs_for_ranking = []
+        if isinstance(extracted_jd_data, dict): # Ensure jd_data is a dict before proceeding
+            for category_key in categories_to_rank:
+                category_items = extracted_jd_data.get(category_key, [])
+                # Ensure items are lists and extend the combined list
+                if isinstance(category_items, list):
+                    combined_jd_reqs_for_ranking.extend(category_items)
+                elif category_items: # Log if a category expected to be a list isn't
+                     logging.warning(f"Data Prep: Expected list for JD category '{category_key}', but got {type(category_items)}. Skipping for ranking.")
         else:
-             # Handle cases where requirements weren't extracted or weren't a list
-             results["ranked_jd_requirements"] = []
-             if not extracted_requirements and "JD Extraction failed" not in " ".join(task_errors):
-                  logging.warning("Skipping JD ranking because no requirements were successfully extracted.")
-                  task_errors.append("JD Ranking skipped: No requirements extracted.")
-             elif not isinstance(extracted_requirements, list):
-                   logging.warning(f"Skipping JD ranking because extracted requirements were not a list ({type(extracted_requirements)}).")
-                   task_errors.append("JD Ranking skipped: Requirements not a list.")
-             # No need to add error if JD extraction already failed
+             logging.warning("Data Prep: JD data is not a dictionary, cannot combine requirements for ranking.")
 
 
-        # --- STEP 4: Identify Missing Keywords ---
-        logging.info("Data Prep Step 4: Identifying Missing Keywords (Resume vs JD)...")
-        # Compare only if JD requirements and resume keywords were successfully extracted
-        jd_keywords_list_for_comp = results.get("jd_data", {}).get("key_skills_requirements", []) # Use original extracted list
-        resume_keywords_list_for_comp = results.get("resume_data", {}).get("extracted_keywords", []) # Get from resume_data dict
+        # Rank the combined requirements list if it's not empty
+        if combined_jd_reqs_for_ranking:
+            logging.info(f"Data Prep: Found {len(combined_jd_reqs_for_ranking)} requirements/skills across selected categories for ranking.")
+            ranking_result = await _rank_jd_requirements(combined_jd_reqs_for_ranking, google_api_key)
+            results["_debug_ranking_result"] = ranking_result # Store for debug
 
-        # Check if both lists are valid and non-empty
-        valid_jd_keywords = isinstance(jd_keywords_list_for_comp, list) and jd_keywords_list_for_comp
-        valid_resume_keywords = isinstance(resume_keywords_list_for_comp, list) # Allow empty resume list
-
-        if valid_jd_keywords and valid_resume_keywords is not None: # Check resume list validity (can be empty)
-             try:
-                  # Ensure JD keywords are strings and lowercased for comparison set
-                  # Handle potential non-string items defensively
-                  jd_keywords_set = set(
-                       str(kw).lower().strip() for kw in jd_keywords_list_for_comp
-                       if isinstance(kw, (str, int, float)) and str(kw).strip()
-                  )
-                  # Resume keywords are already lowercased list from parsing function
-                  resume_keywords_set = set(resume_keywords_list_for_comp) # Assumes list of strings
-
-                  missing_keywords = sorted(list(jd_keywords_set - resume_keywords_set))
-                  results["missing_keywords_from_resume"] = missing_keywords
-                  logging.info(f"Data Prep Step 4: Identified {len(missing_keywords)} potentially missing keywords.")
-             except Exception as kw_err:
-                  task_errors.append(f"Keyword comparison error: {kw_err}")
-                  results["missing_keywords_from_resume"] = [] # Reset on error
-                  logging.error(f"Error during keyword comparison: {kw_err}", exc_info=True)
+            if ranking_result.get("error"):
+                task_errors.append(f"JD Ranking error: {ranking_result['error']}")
+                # Keep the UNRANKED combined list if ranking fails
+                results["ranked_jd_requirements"] = combined_jd_reqs_for_ranking
+                logging.warning(f"JD Ranking failed, using unranked combined requirements list. Error: {ranking_result['error']}")
+            else:
+                results["ranked_jd_requirements"] = ranking_result.get("ranked_list", []) # Store the ranked list
+                logging.info("Data Prep Step 3: JD Ranking successful.")
         else:
-             results["missing_keywords_from_resume"] = []
-             if not valid_jd_keywords:
-                  logging.info("Skipping missing keyword identification: JD keywords missing or invalid.")
-                  task_errors.append("Keyword Comparison skipped: JD keywords unavailable.")
-             elif valid_resume_keywords is None: # Check if resume keywords failed extraction severely
-                  logging.info("Skipping missing keyword identification: Resume keywords unavailable.")
-                  task_errors.append("Keyword Comparison skipped: Resume keywords unavailable.")
+            # Handle cases where no requirements were found in the combined categories
+            results["ranked_jd_requirements"] = []
+            if not task_errors: # Only add this error if JD extraction didn't already fail
+                 no_req_msg = "JD Ranking skipped: No requirements found in selected JD categories."
+                 task_errors.append(no_req_msg)
+                 logging.warning(no_req_msg)
+            # else: JD extraction failure already noted in task_errors
+
+        # --- STEP 4: Identify Missing Keywords (Using Same Combined Categories) ---
+        logging.info("Data Prep Step 4: Identifying Missing Keywords (Resume vs Combined JD Requirements)...")
+        # Use the same combined list used for ranking (or derive it again if preferred)
+        # Variable `combined_jd_reqs_for_ranking` holds the list from Step 3.
+        resume_keywords_list = results.get("resume_data", {}).get("extracted_keywords", [])
+
+        # Check if we have a valid list from JD and resume keywords were successfully extracted (can be empty)
+        # combined_jd_reqs_for_ranking is guaranteed to be a list here (empty or populated)
+        valid_resume_keywords_list = isinstance(resume_keywords_list, list) # Check if resume extraction yielded a list
+
+        if combined_jd_reqs_for_ranking and valid_resume_keywords_list:
+            try:
+                # Ensure JD keywords are strings and lowercased for comparison set
+                jd_keywords_set = set(
+                    str(kw).lower().strip() for kw in combined_jd_reqs_for_ranking
+                    if isinstance(kw, (str, int, float)) and str(kw).strip()
+                )
+                # Resume keywords are already lowercased list of strings from parsing function
+                resume_keywords_set = set(resume_keywords_list)
+
+                missing_keywords = sorted(list(jd_keywords_set - resume_keywords_set))
+                results["missing_keywords_from_resume"] = missing_keywords
+                logging.info(f"Data Prep Step 4: Identified {len(missing_keywords)} potentially missing keywords.")
+            except Exception as kw_err:
+                task_errors.append(f"Keyword comparison error: {kw_err}")
+                results["missing_keywords_from_resume"] = [] # Reset on error
+                logging.error(f"Error during keyword comparison: {kw_err}", exc_info=True)
+        else:
+            results["missing_keywords_from_resume"] = []
+            if not combined_jd_reqs_for_ranking and not task_errors: # Check if combined list was empty and no prior errors
+                kw_skip_msg = "Keyword Comparison skipped: No JD requirements/keywords found in selected categories."
+                task_errors.append(kw_skip_msg)
+                logging.warning(kw_skip_msg)
+            elif not valid_resume_keywords_list:
+                 kw_skip_msg = "Keyword Comparison skipped: Resume keywords list unavailable or invalid."
+                 task_errors.append(kw_skip_msg)
+                 logging.warning(kw_skip_msg)
 
 
         # --- Finalize Errors ---
@@ -1099,33 +1178,34 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
             results["error"] = "; ".join(task_errors)
             logging.error(f"Data preparation completed with errors: {results['error']}")
         else:
-             logging.info("Data preparation completed successfully.")
+            logging.info("Data preparation completed successfully.")
 
     except Exception as e:
         # Catch-all for unexpected errors during the orchestration logic itself
         critical_error_msg = f"Critical Error in Data Preparation Pipeline: {e}"
-        results["error"] = critical_error_msg
+        # Prepend to existing errors if any, otherwise set it
+        current_error = results.get("error")
+        results["error"] = f"{critical_error_msg}; {current_error}" if current_error else critical_error_msg
         logging.error(critical_error_msg, exc_info=True)
         # Ensure essential raw data is still present
         results["raw_resume"] = resume_content
         results["raw_jd"] = job_description
-        # Clear potentially inconsistent intermediate data
-        results["jd_data"] = {}
-        results["resume_data"] = {}
+        # Clear potentially inconsistent intermediate data if a major pipeline error occurs
+        if "jd_data" not in results or not results["jd_data"]: results["jd_data"] = {}
+        if "resume_data" not in results or not results["resume_data"]: results["resume_data"] = {}
         results["ranked_jd_requirements"] = []
         results["missing_keywords_from_resume"] = []
-
 
     return results
 
 
-# --- Generator with Multi-Turn Refinement & Enhanced Instructions (Async Stream) ---
 async def generate_application_text_streamed(
     name: str, email: str, job_description: str, resume_content: str,
     generation_type: str, google_api_key: str, tone: str
 ) -> AsyncGenerator[str, None]:
     """
     Generates Resume or Cover Letter using a multi-turn refinement process (async stream).
+    - Handles categorized JD data from _prepare_common_data.
     - Cover Letter focuses on deep company alignment.
     - Resume focuses on strict ATS optimization rules, high keyword coverage (~80%),
       natural distribution, AND selecting top relevant experience/project points.
@@ -1137,37 +1217,70 @@ async def generate_application_text_streamed(
     try:
         # --- 1. Prepare Data (JD Extraction, Resume Parsing, Ranking, Keyword Gap) ---
         yield "--- Preparing and analyzing inputs (Job Description, Resume)... ---\n"
+        # Call the (already fixed) prepare_common_data function
         common_data = await _prepare_common_data(job_description, resume_content, google_api_key)
 
         # --- Handle Data Preparation Errors ---
         if common_data.get("error"):
+            # If _prepare_common_data itself reported an error, yield it and stop
             yield f"\n--- ERROR during data preparation: {common_data['error']} ---\n"
-            # Provide more specific debug info based on error messages
+            # Provide specific debug info if available from prep errors
             if "JD Extraction failed" in common_data["error"]:
-                yield f"DEBUG: Could not fully process the Job Description. Check its format and content.\n"
+                yield f"DEBUG (Prep Error): Could not fully process the Job Description. Check its format and content.\n"
             if "Resume Parsing failed" in common_data["error"]:
-                yield f"DEBUG: Could not fully process the Resume. Check its format and content.\n"
-                yield f"DEBUG: Raw Resume Snippet (first 500 chars):\n------\n{resume_content[:500]}\n------\n"
-            yield "\n--- Generation stopped due to data preparation errors. ---\n"
+                yield f"DEBUG (Prep Error): Could not fully process the Resume. Check its format and content.\n"
+                raw_resume_snippet = common_data.get("raw_resume", "")[:500]
+                yield f"DEBUG (Prep Error): Raw Resume Snippet (first 500 chars):\n------\n{raw_resume_snippet}\n------\n"
+            yield "\n--- Generation stopped due to data preparation errors reported by prepare_common_data. ---\n"
             return # Stop generation if critical prep failed
 
-        # --- Verify Essential Data Pieces ---
+       # --- *** UPDATED: Verify Essential Data Pieces from JD *** ---
         jd_data = common_data.get("jd_data", {})
-        if not jd_data or not jd_data.get("job_title") or not jd_data.get("key_skills_requirements"):
-            yield "\n--- ERROR: Critical Job Description data (Title or Requirements) missing after preparation. Cannot proceed effectively. ---\n"
-            yield f"DEBUG: Job Title: {jd_data.get('job_title')}\n"
-            yield f"DEBUG: Requirements Count: {len(jd_data.get('key_skills_requirements', []))}\n"
-            yield f"DEBUG: Job Title: {jd_data.get('job_title')}\n"
-            yield f"DEBUG: Requirements Count: {len(jd_data.get('key_skills_requirements', []))}\n"            
-            yield "\n--- Generation stopped due to missing critical JD data. ---\n"
-            return
 
+        # Define the key requirement categories to check (should align with _prepare_common_data)
+        essential_requirement_categories = [
+            "technical_skills",
+            "tools_platforms",
+            "experience_qualifications",
+            "certifications",
+            "methodologies",
+        ]
+
+        # Check if job title is present AND if at least one essential requirement category has data
+        job_title_present = jd_data.get("job_title")
+        # Check if *any* of the essential categories exist as keys AND have non-empty list values
+        requirements_present = any(
+            isinstance(jd_data.get(cat), list) and jd_data.get(cat)
+            for cat in essential_requirement_categories
+        )
+
+        if not jd_data or not job_title_present or not requirements_present:
+            # Yield error if critical data is missing
+            yield "\n--- ERROR: Critical Job Description data (Title or Requirements) missing after preparation. Cannot proceed effectively. ---\n"
+            # Provide detailed debug info based on the NEW checks
+            yield f"DEBUG: Job Data Retrieved: {'Yes' if jd_data else 'No'}\n"
+            yield f"DEBUG: Job Title Found: '{jd_data.get('job_title', 'MISSING')}'\n"
+            yield f"DEBUG: Requirements Found (Any essential category populated): {'Yes' if requirements_present else 'No'}\n"
+            # Optionally show status of individual categories
+            for cat in essential_requirement_categories:
+                 cat_data = jd_data.get(cat)
+                 status = f"Present ({len(cat_data)} items)" if isinstance(cat_data, list) and cat_data else "Absent/Empty/Invalid"
+                 yield f"DEBUG:   - Category '{cat}': {status}\n"
+
+            yield "\n--- Generation stopped due to missing critical JD data. ---\n"
+            return # Stop generation
+
+        # --- Verify Essential Resume Data Pieces (Optional Warning) ---
         resume_data = common_data.get("resume_data", {})
-        if not resume_data or not resume_data.get("sections") or resume_data.get("extracted_keywords") is None:
+        resume_sections = resume_data.get("sections", {})
+        resume_keywords = resume_data.get("extracted_keywords") # No default, check for None
+
+        if not resume_data or not resume_sections or resume_keywords is None: # Check if keywords is None (parsing failed badly)
             yield "\n--- WARNING: Resume data (Sections or Keywords) appears incomplete after preparation. Generation quality may be affected. ---\n"
             yield f"DEBUG: Resume Data Keys: {list(resume_data.keys())}\n"
-            yield f"DEBUG: Resume Sections Keys: {list(resume_data.get('sections', {}).keys())}\n"
-            yield f"DEBUG: Resume Keywords Count: {len(resume_data.get('extracted_keywords', [])) if resume_data.get('extracted_keywords') is not None else 'N/A'}\n"# ... (keep existing debug yields) ...
+            yield f"DEBUG: Resume Sections Keys: {list(resume_sections.keys())}\n"
+            kw_count = len(resume_keywords) if isinstance(resume_keywords, list) else 'N/A (Extraction Failed)'
+            yield f"DEBUG: Resume Keywords Count: {kw_count}\n"
             # Decide whether to stop or continue. Let's continue but warn.
 
         # --- Extract common data points (needed for both selection and prompts) ---
@@ -1182,79 +1295,88 @@ async def generate_application_text_streamed(
 
             # --- Select Top Bullets (from Achievements) ---
             if resume_achievements and ranked_reqs:
-                # Format achievements into strings for selection
+                # Format achievements into strings for selection (using action verb and result)
                 achievement_strings = []
                 for ach in resume_achievements:
-                    verb = ach.get('action_verb', 'Processed')
-                    result = ach.get('quantifiable_result')
+                    verb = ach.get('action_verb', 'Processed') # Default verb if missing
+                    result_text = ach.get('quantifiable_result')
                     # Create a representative string (adjust format as needed)
-                    ach_str = f"{verb}..." + (f" (Result: {result})" if result else "")
+                    # Example: "Managed... (Result: budget of $5M)" or "Developed..."
+                    ach_str = f"{verb}..." + (f" (Result: {result_text})" if result_text else "")
                     achievement_strings.append(ach_str)
 
                 if achievement_strings:
-                    logging.info(f"Attempting to select top bullets from {len(achievement_strings)} achievements.")
+                    logging.info(f"Attempting to select top bullets from {len(achievement_strings)} achievements based on ranked requirements.")
                     bullet_selection_result = await _select_top_bullets_llm(
                         bullets=achievement_strings,
-                        job_requirements=ranked_reqs,
+                        job_requirements=ranked_reqs, # Use the combined ranked list
                         google_api_key=google_api_key,
                         max_bullets= 8 # Select slightly more bullets overall
                     )
                     if bullet_selection_result.get("error"):
-                        logging.warning(f"Bullet selection failed: {bullet_selection_result['error']}. Proceeding without selected highlights.")
+                        logging.warning(f"Bullet selection failed: {bullet_selection_result['error']}. Proceeding without selected experience highlights.")
+                        yield f"--- WARNING: Could not automatically select top experience highlights: {bullet_selection_result['error']} ---\n"
                     else:
                         selected_bullets = bullet_selection_result.get("selected_list", [])
                         if selected_bullets:
+                            # Format for inclusion in the generation prompt context
                             selected_bullets_context_str = "**Selected Experience Highlights (Prioritize incorporating these):**\n" + "\n".join(f"- {b}" for b in selected_bullets)
                             logging.info(f"Selected {len(selected_bullets)} experience highlights.")
+                            yield f"--- Identified {len(selected_bullets)} potentially relevant experience highlights. ---\n"
                         else:
-                            logging.info("Bullet selection ran but returned no bullets.")
+                            logging.info("Bullet selection ran but returned no relevant bullets.")
+                            yield "--- No specific experience highlights were automatically selected as most relevant. ---\n"
                 else:
-                     logging.info("No formatted achievement strings to select bullets from.")
-
+                    logging.info("No formatted achievement strings to select bullets from.")
+                    yield "--- No resume achievements found to select highlights from. ---\n"
             else:
-                logging.warning("Skipping bullet selection due to missing achievements or requirements.")
+                logging.warning("Skipping bullet selection due to missing achievements or ranked requirements.")
+                yield "--- Skipping experience highlight selection (missing resume achievements or ranked JD requirements). ---\n"
 
 
             # --- Select Top Projects ---
-            projects_text = resume_sections.get("projects")
+            # Logic to parse projects_text remains basic, may need refinement based on resume formats
+            projects_text = resume_sections.get("projects") # Get projects section text
             if projects_text and isinstance(projects_text, str) and ranked_reqs:
-                 # Attempt simple parsing: Split by potential project markers (e.g., double newline, heading)
-                 # This is basic and might need refinement based on actual resume format.
-                 # Assumes projects start with '**' or similar markdown heading-like structure potentially preceded by newlines.
+                # Attempt simple parsing: Split by potential project markers
                 potential_projects = re.split(r'\n\s*\n(?=\*\*.*?\*\*\s*\n)', projects_text.strip()) # Split on blank lines before bold titles
-                if len(potential_projects) <= 1 and '\n**' in projects_text: # Try splitting just on bold titles if the first split failed
-                     potential_projects = re.split(r'(?<=\n)\*\*(.*?)\*\*\s*\n', projects_text.strip())
-                     # Filter out empty strings and re-add markdown to titles
-                     potential_projects = [f"**{p.strip()}**" for p in potential_projects if p and p.strip()]
-
+                if len(potential_projects) <= 1 and '\n**' in projects_text: # Try splitting just on bold titles
+                    potential_projects = re.split(r'(?<=\n)\*\*(.*?)\*\*\s*\n', projects_text.strip())
+                    potential_projects = [f"**{p.strip()}**" + potential_projects[i+1].strip() for i, p in enumerate(potential_projects[1::2]) if i+1 < len(potential_projects)] # Reconstruct title + body
 
                 all_project_descriptions = [p.strip() for p in potential_projects if p and p.strip()]
 
                 if all_project_descriptions:
-                    logging.info(f"Attempting to select top projects from {len(all_project_descriptions)} potential project descriptions.")
+                    logging.info(f"Attempting to select top projects from {len(all_project_descriptions)} potential project descriptions based on ranked requirements.")
                     project_selection_result = await _select_top_projects_llm(
                         projects=all_project_descriptions,
-                        job_requirements=ranked_reqs,
+                        job_requirements=ranked_reqs, # Use the combined ranked list
                         google_api_key=google_api_key,
                         max_projects=3 # Select top 3
                     )
                     if project_selection_result.get("error"):
                         logging.warning(f"Project selection failed: {project_selection_result['error']}. Proceeding without selected projects.")
+                        yield f"--- WARNING: Could not automatically select top projects: {project_selection_result['error']} ---\n"
                     else:
                         selected_projects = project_selection_result.get("selected_list", [])
                         if selected_projects:
                             # Assume selected_projects are full markdown chunks
                             selected_projects_context_str = "**Selected Project Highlights (Prioritize incorporating these):**\n\n" + "\n\n".join(selected_projects)
                             logging.info(f"Selected {len(selected_projects)} project highlights.")
+                            yield f"--- Identified {len(selected_projects)} potentially relevant project highlights. ---\n"
                         else:
-                            logging.info("Project selection ran but returned no projects.")
+                            logging.info("Project selection ran but returned no relevant projects.")
+                            yield "--- No specific project highlights were automatically selected as most relevant. ---\n"
                 else:
-                     logging.info("Could not parse project descriptions for selection.")
+                    logging.info("Could not parse project descriptions for selection from the 'projects' section.")
+                    yield "--- Could not parse projects from resume for selection. ---\n"
 
             else:
-                 logging.warning("Skipping project selection due to missing project text or requirements.")
+                logging.warning("Skipping project selection due to missing project text in resume or missing ranked requirements.")
+                yield "--- Skipping project highlight selection (missing resume project section or ranked JD requirements). ---\n"
+
             yield "--- Selection finished. Proceeding with generation... ---\n"
-        # --- *** END NEW SELECTION LOGIC *** ---
+        # --- *** END SELECTION LOGIC *** ---
 
 
         # --- Format Common Inputs for Prompts (Now includes selected context) ---
@@ -1274,18 +1396,19 @@ async def generate_application_text_streamed(
             resume_sections_str = resume_sections_str[:MAX_RESUME_PROMPT_LEN] + "\n... [Resume Sections Truncated] ..."
             logging.warning(f"Truncated resume sections string for prompt to {MAX_RESUME_PROMPT_LEN} chars.")
         elif not resume_sections_str:
-             # Fallback to raw resume if parsed sections are empty
-             raw_resume = common_data.get("raw_resume", "Resume content not available.")
-             resume_sections_str = raw_resume[:MAX_RESUME_PROMPT_LEN] # Truncate raw too
-             if len(raw_resume) > MAX_RESUME_PROMPT_LEN:
-                 resume_sections_str += "\n... [Raw Resume Truncated] ..."
-             logging.warning("Resume sections empty after parsing attempt, using raw resume content in prompt.")
+            # Fallback to raw resume if parsed sections are empty
+            raw_resume = common_data.get("raw_resume", "Resume content not available.")
+            resume_sections_str = raw_resume[:MAX_RESUME_PROMPT_LEN] # Truncate raw too
+            if len(raw_resume) > MAX_RESUME_PROMPT_LEN:
+                resume_sections_str += "\n... [Raw Resume Truncated] ..."
+            logging.warning("Resume sections empty after parsing attempt, using raw resume content in prompt.")
 
 
         # Format other common data points
-        ranked_reqs = common_data.get("ranked_jd_requirements", [])
+        # ranked_reqs is already the combined, ranked list from _prepare_common_data
         ranked_req_str = "\n".join(f"- {req}" for req in ranked_reqs) if ranked_reqs else "N/A - Ranking may have failed or no requirements found."
-        jd_title = jd_data.get('job_title', 'N/A')
+        # jd_data should be valid here based on checks above
+        jd_title = jd_data.get('job_title', 'N/A') # Already checked this exists
         jd_company = jd_data.get('company_name', 'N/A')
         company_context_jd = jd_data.get('company_values_mission_challenges', 'N/A')
         missing_keywords = common_data.get("missing_keywords_from_resume", [])
@@ -1295,17 +1418,16 @@ async def generate_application_text_streamed(
         achievements_sample_str = "N/A"
         try:
             # Sample first 5 achievements for brevity in prompt
-            achievements_sample_str = json.dumps(resume_achievements[:5], indent=2)
+            achievements_sample_str = json.dumps(resume_achievements[:5], indent=2) if resume_achievements else "None Available"
         except TypeError as json_e:
             logging.error(f"Could not serialize resume achievements for prompt: {json_e}")
             achievements_sample_str = "[Error serializing achievements]"
 
-
         # --- External Company Info Placeholder ---
         external_company_prompt_section = "**External Company Research Findings:** Not Available (Feature not implemented)."
 
-
         # --- Define Type-Specific Prompt Components ---
+        # (The rest of the prompt definition logic for draft, critique, refinement remains the same)
         draft_task_instructions = ""
         critique_criteria = ""
         refinement_instructions = ""
@@ -1481,7 +1603,7 @@ async def generate_application_text_streamed(
         base_context = f"""
         **Candidate:** {name} ({email})
         **Target Job:** {jd_title} at {jd_company}
-        **Ranked Job Requirements (Most Important First):**
+        **Ranked Job Requirements (Most Important First - Combined from Categories):**
 {ranked_req_str}
         **Parsed Candidate Resume Sections (Use for context, but prioritize Selected Highlights below for Exp/Proj):**
 {resume_sections_str}
@@ -1490,7 +1612,7 @@ async def generate_application_text_streamed(
         {selected_bullets_context_str if generation_type == TYPE_RESUME and selected_bullets_context_str else ""}
         {selected_projects_context_str if generation_type == TYPE_RESUME and selected_projects_context_str else ""}
         **Desired Tone:** {tone}
-        **Potentially Missing Keywords (Resume vs. JD):** {missing_keywords_str}
+        **Potentially Missing Keywords (Resume vs. Combined JD Requirements):** {missing_keywords_str}
         **Job Description Company Context:** {company_context_jd}
         {external_company_prompt_section if generation_type == TYPE_COVER_LETTER else ""}
         """ # Include external info only for Cover Letter context (if available)
@@ -1520,10 +1642,20 @@ async def generate_application_text_streamed(
             if isinstance(initial_draft_result, str) and initial_draft_result.strip():
                 initial_draft = initial_draft_result.strip()
             else:
-                raise ValueError("Initial draft generation failed or returned empty.")
+                # Check if it was blocked
+                block_reason_info = ""
+                # This requires _call_llm_async to potentially return richer error info or store it.
+                # For now, just raise a general error. A more sophisticated approach might try
+                # accessing block reason if the helper function could provide it upon failure.
+                # if hasattr(initial_draft_result, 'prompt_feedback'): # Example check
+                #     block_reason_info = f" (Block Reason: {initial_draft_result.prompt_feedback.block_reason})"
+
+                raise ValueError(f"Initial draft generation failed or returned empty.{block_reason_info}")
         except Exception as draft_err:
             yield f"\n--- ERROR: Initial {final_doc_type_name} draft generation failed: {draft_err} ---\n"
             logging.error(f"Initial {final_doc_type_name} draft generation failed.", exc_info=True)
+            # Include context that might help diagnose (like prompt length, sensitive keywords)
+            yield f"DEBUG: Draft Prompt Length: {len(draft_prompt)} chars\n"
             yield "\n--- Generation stopped due to draft failure. ---\n"
             return # Stop generation
 
@@ -1536,13 +1668,13 @@ async def generate_application_text_streamed(
         **Critique Task:** Evaluate the initial draft below based *strictly* on the critique criteria provided. Output only brief, specific bullet points addressing each criterion. Do not add explanations.
 
         **Context for Critique:**
-        * **Target Job Requirements (Ranked):**
+        * **Target Job Requirements (Ranked - Combined):**
 {ranked_req_str}
         * **Potentially Missing Keywords Attempted:** {missing_keywords_str}
         * **Desired Tone:** {tone}
         {f'* **JD Company Context:** {company_context_jd}' if generation_type == TYPE_COVER_LETTER else ''}
-        {f'* **Selected Experience Highlights:** {selected_bullets_context_str}' if generation_type == TYPE_RESUME and selected_bullets_context_str else ''}
-        {f'* **Selected Project Highlights:** {selected_projects_context_str}' if generation_type == TYPE_RESUME and selected_projects_context_str else ''}
+        {f'* **Selected Experience Highlights Context:** {selected_bullets_context_str}' if generation_type == TYPE_RESUME and selected_bullets_context_str else ''}
+        {f'* **Selected Project Highlights Context:** {selected_projects_context_str}' if generation_type == TYPE_RESUME and selected_projects_context_str else ''}
         {external_company_prompt_section if generation_type == TYPE_COVER_LETTER else ""}
 
         **Initial {final_doc_type_name} Draft to Critique:**
@@ -1577,7 +1709,7 @@ async def generate_application_text_streamed(
         yield f"\n--- Generating final refined {final_doc_type_name}... ---\n"
         # Construct refinement prompt using initial draft and critique
         refinement_prompt = f"""
-        **Refinement Task:** Generate the **FINAL, REVISED** {final_doc_type_name}. Your goal is to meticulously address the critique points provided below (if any) AND strictly adhere to ALL original instructions and rules outlined in the base context (including prioritizing selected highlights for Resumes). Produce a polished, complete final document.
+        **Refinement Task:** Generate the **FINAL, REVISED** {final_doc_type_name}. Your goal is to meticulously address the critique points provided below (if any) AND strictly adhere to ALL original instructions and rules outlined in the base context (including prioritizing selected highlights for Resumes and maintaining exact formatting). Produce a polished, complete final document.
 
         {base_context} # Includes selected highlights if applicable
 
@@ -1607,6 +1739,7 @@ async def generate_application_text_streamed(
 
             # Stream the final output chunk by chunk
             stream_produced_output = False
+            # Ensure the result is actually an async generator before iterating
             if hasattr(final_stream_generator, '__aiter__'):
                 async for chunk in final_stream_generator:
                     # Ensure chunk is string before yielding
@@ -1614,10 +1747,14 @@ async def generate_application_text_streamed(
                         yield chunk
                         stream_produced_output = True
                     else:
-                        logging.warning(f"Received non-string chunk in final stream: {type(chunk)}")
+                        # This might happen if the stream yields error messages internally
+                        logging.warning(f"Received non-string chunk in final stream: {type(chunk)} - Content: {str(chunk)[:100]}")
+                        # Optionally yield error chunk if it contains useful info:
+                        # if "--- ERROR:" in str(chunk): yield str(chunk)
 
                 if not stream_produced_output:
-                    yield f"\n--- WARNING: Final {final_doc_type_name} generation stream finished without producing output. Check for potential prompt/model issues. ---"
+                    # If the generator finished without yielding anything
+                    yield f"\n--- WARNING: Final {final_doc_type_name} generation stream finished without producing output. Check for potential prompt/model issues or safety blocks. ---"
                     logging.warning(f"Final {final_doc_type_name} stream was empty.")
             else:
                 # Handle cases where streaming call unexpectedly didn't return a generator
@@ -1628,6 +1765,7 @@ async def generate_application_text_streamed(
         except Exception as final_gen_err:
             yield f"\n--- ERROR: Final {final_doc_type_name} generation failed during streaming: {final_gen_err} ---\n"
             logging.error(f"Final {final_doc_type_name} generation/streaming failed.", exc_info=True)
+            yield f"DEBUG: Refinement Prompt Length: {len(refinement_prompt)} chars\n"
             yield "\n--- Generation stopped due to final refinement failure. ---\n"
             return
 
