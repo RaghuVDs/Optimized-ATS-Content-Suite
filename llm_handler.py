@@ -680,113 +680,6 @@ Key Extraction Details:
     return result
 
 
-# --- Rank JD Requirements (Async LLM) ---
-async def _rank_jd_requirements(requirements: List[str], google_api_key: str) -> Dict[str, Any]:
-    """Uses an LLM to rank JD requirements provided as a list of strings (async)."""
-
-    # Input Validation
-    if not isinstance(requirements, list):
-         logging.warning(f"Input 'requirements' for ranking is not a list ({type(requirements)}). Returning empty.")
-         # Return original input if not list? No, return empty as ranking isn't possible.
-         return {"ranked_list": [], "error": "Input requirements was not a list."}
-
-    # Filter out non-string or empty string items
-    valid_requirements = [str(req).strip() for req in requirements if isinstance(req, str) and str(req).strip()]
-
-    if not valid_requirements:
-         logging.info("No valid, non-empty requirements provided to rank.")
-         return {"ranked_list": [], "error": None} # Not an error, just nothing to do.
-
-    # Format requirements for the prompt
-    req_string = "\n".join(f"- {req}" for req in valid_requirements)
-
-    prompt = f"""
-    Analyze the following list of job requirements extracted from a job description. Your task is to rank these requirements based on their likely importance from the perspective of a hiring manager or ATS screening.
-    Prioritize mandatory qualifications (e.g., specific degree, years of experience in a core technology, essential certifications) and core technical skills highest. Then rank key responsibilities and important soft skills. Preferred qualifications or general duties should be ranked lower.
-
-    Return ONLY a valid JSON object containing a single key: "ranked_list".
-    The value associated with "ranked_list" MUST be a list of strings, where each string is one of the original requirement texts provided below. The list MUST contain the exact same requirements as the input, but ordered from MOST important to LEAST important based on your analysis.
-
-    Requirements List to Rank:
-    ---
-    {req_string}
-    ---
-
-    JSON Output (containing ONLY the "ranked_list" key with the reordered list of strings):
-    """
-    # Default result structure
-    result = {"ranked_list": valid_requirements, "error": None} # Default to original list
-
-    try:
-         # Use the helper function for the LLM call
-        response_text = await _call_llm_async(
-            prompt=prompt,
-            api_key=google_api_key,
-            model_name=EXTRACTION_MODEL_NAME, # Use a model good for analysis/extraction
-            temperature=0.15, # Low temperature for more deterministic ranking
-            request_json=True # Request JSON output
-        )
-
-        # --- Process LLM Response ---
-        if isinstance(response_text, str):
-            raw_json_string = response_text # Assumed cleaned by helper
-
-            # --- Parse and Validate JSON ---
-            try:
-                ranked_data = json.loads(raw_json_string)
-
-                # Validate structure
-                if not isinstance(ranked_data, dict) or "ranked_list" not in ranked_data:
-                    raise ValueError("LLM response missing 'ranked_list' key or is not a dictionary.")
-
-                ranked_list_raw = ranked_data["ranked_list"]
-                if not isinstance(ranked_list_raw, list):
-                    raise ValueError("Value associated with 'ranked_list' is not a list.")
-
-                # Validate content: ensure items are strings and try to match input count
-                validated_ranked_list = [str(item).strip() for item in ranked_list_raw if isinstance(item, str) and str(item).strip()]
-
-                # Sanity Check: Compare length and content (optional but recommended)
-                if len(validated_ranked_list) != len(valid_requirements):
-                     logging.warning(f"Ranked list length ({len(validated_ranked_list)}) differs from input requirements length ({len(valid_requirements)}). LLM might have omitted or added items.")
-                     # Decide how to handle: Use the potentially flawed list, or fallback? Let's use it but log warning.
-                     result["ranked_list"] = validated_ranked_list # Use the list from LLM despite length mismatch
-                elif set(validated_ranked_list) != set(valid_requirements):
-                     logging.warning("Ranked list contains different items than the input requirements. Using LLM output.")
-                     result["ranked_list"] = validated_ranked_list # Use the list from LLM despite content mismatch
-                else:
-                     # Length and content seem okay
-                     result["ranked_list"] = validated_ranked_list
-                     logging.info("JD Requirements ranked successfully.")
-
-                result["error"] = None # Success
-
-            # --- Handle JSON Parsing/Validation Errors ---
-            except (json.JSONDecodeError, ValueError) as json_err:
-                 error_msg = f"Failed to parse/validate JD ranking JSON response: {json_err}"
-                 logging.error(f"{error_msg}. Raw Response Snippet: {raw_json_string[:500]}...")
-                 result["error"] = error_msg
-                 # Keep default ranked_list (original order) on error
-            except Exception as e_inner:
-                 error_msg = f"Unexpected error processing JD ranking JSON: {e_inner}"
-                 logging.error(error_msg, exc_info=True)
-                 result["error"] = error_msg
-                 # Keep default ranked_list on error
-        else:
-            # Handle case where LLM call did not return a string
-            logging.error(f"Unexpected return type from _call_llm_async for JD ranking: {type(response_text)}")
-            result["error"] = "Error: LLM call for JD ranking did not return text."
-            # Keep default ranked_list on error
-
-    # --- Handle Outer LLM Call Errors ---
-    except Exception as e:
-        logging.error(f"Error during LLM call for JD requirement ranking: {e}", exc_info=True)
-        result["error"] = f"JD Ranking LLM Call Error: {e}"
-        # Keep default ranked_list on error
-
-    return result
-
-
 async def _select_top_bullets_llm(
     bullets: List[str],
     job_requirements: List[str],
@@ -1031,7 +924,7 @@ async def _select_top_projects_llm(
 async def _prepare_common_data(job_description: str, resume_content: str, google_api_key: str) -> Dict[str, Any]:
     """
     Orchestrates enhanced data extraction (JD with categories), parsing (Resume),
-    ranking (selected JD requirements), and keyword comparison.
+    and keyword comparison. Combines relevant JD categories but SKIPS ranking.
     Ensures consistency in handling the structured JD data.
     """
     # Initialize results with defaults and include raw inputs
@@ -1039,14 +932,15 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
         "error": None,
         "jd_data": {}, # Will hold structured JD { "data": {...}, "error": ... }
         "resume_data": {}, # Will hold structured Resume { "sections": ..., "keywords": ..., "achievements": ..., "error": ... }
-        "ranked_jd_requirements": [], # List of ranked requirement strings (selected categories)
-        "missing_keywords_from_resume": [], # List of keywords in selected JD categories but not Resume
+        # RENAMED KEY: Stores the combined, unranked list of requirements from selected categories
+        "combined_jd_requirements": [],
+        "missing_keywords_from_resume": [], # List of keywords in combined JD list but not Resume
         "raw_resume": resume_content,
         "raw_jd": job_description,
         # Store intermediate results for debugging if needed
         "_debug_jd_extraction_result": None,
         "_debug_resume_parsing_result": None,
-        "_debug_ranking_result": None,
+        # "_debug_ranking_result": None, # Ranking is removed
     }
     task_errors = [] # Collect errors from sequential steps
 
@@ -1060,7 +954,6 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
             task_errors.append(f"JD Extraction failed: {jd_extraction_result['error']}")
             results["jd_data"] = {} # Ensure default structure on error
         else:
-            # Store the actual data dict which contains categorized keys
             results["jd_data"] = jd_extraction_result.get("data", {})
             logging.info("Data Prep Step 1: JD Extraction successful.")
 
@@ -1078,122 +971,109 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
                 "error": resume_parsing_result.get("error")
             }
         else:
-            results["resume_data"] = resume_parsing_result # Contains sections, keywords, achievements, error=None
+            results["resume_data"] = resume_parsing_result
             logging.info("Data Prep Step 2: Resume Parsing successful.")
 
-        # --- STEP 3: Rank JD Requirements (Using Combined Categories) ---
-        logging.info("Data Prep Step 3: Combining and Ranking JD Requirements...")
-        extracted_jd_data = results.get("jd_data", {}) # Use the extracted data from Step 1
+        # --- STEP 3: Combine JD Requirements from Categories (NO RANKING) ---
+        logging.info("Data Prep Step 3: Combining JD Requirements from Categories...")
+        extracted_jd_data = results.get("jd_data", {})
 
-        # --- Define which categories to combine for ranking ---
-        # Adjust this list based on which categories you deem most important for ranking
-        categories_to_rank = [
+        # Define which categories to combine (adjust as needed)
+        categories_to_combine = [
             "technical_skills",
             "tools_platforms",
             "experience_qualifications",
             "certifications",
             "methodologies",
-             #"soft_skills", # Optional: Include soft skills if desired for ranking
-             #"domain_knowledge" # Optional: Include domain knowledge
+            "soft_skills", # Including soft skills and domain now as we want all meaningful ones
+            "domain_knowledge"
         ]
 
         # Combine items from the selected categories into a single list
-        combined_jd_reqs_for_ranking = []
-        if isinstance(extracted_jd_data, dict): # Ensure jd_data is a dict before proceeding
-            for category_key in categories_to_rank:
+        combined_requirements_list = []
+        if isinstance(extracted_jd_data, dict):
+            for category_key in categories_to_combine:
                 category_items = extracted_jd_data.get(category_key, [])
-                # Ensure items are lists and extend the combined list
                 if isinstance(category_items, list):
-                    combined_jd_reqs_for_ranking.extend(category_items)
-                elif category_items: # Log if a category expected to be a list isn't
-                     logging.warning(f"Data Prep: Expected list for JD category '{category_key}', but got {type(category_items)}. Skipping for ranking.")
+                    combined_requirements_list.extend(category_items)
+                elif category_items:
+                     logging.warning(f"Data Prep: Expected list for JD category '{category_key}', but got {type(category_items)}. Skipping.")
+            # Store the combined, unranked list
+            results["combined_jd_requirements"] = combined_requirements_list
+            logging.info(f"Data Prep Step 3: Combined {len(combined_requirements_list)} requirements/skills across selected categories.")
+            if not combined_requirements_list and not task_errors:
+                 # Add a note if extraction worked but found nothing in combined categories
+                 task_errors.append("JD Combining Note: No requirements found in selected JD categories.")
+                 logging.warning("JD Combining Note: No requirements found in selected JD categories.")
+
         else:
-             logging.warning("Data Prep: JD data is not a dictionary, cannot combine requirements for ranking.")
+             logging.warning("Data Prep: JD data is not a dictionary, cannot combine requirements.")
+             results["combined_jd_requirements"] = [] # Ensure it's an empty list
+             if not task_errors: # If JD extraction didn't already fail
+                 task_errors.append("JD Combining Error: JD data structure invalid.")
 
 
-        # Rank the combined requirements list if it's not empty
-        if combined_jd_reqs_for_ranking:
-            logging.info(f"Data Prep: Found {len(combined_jd_reqs_for_ranking)} requirements/skills across selected categories for ranking.")
-            ranking_result = await _rank_jd_requirements(combined_jd_reqs_for_ranking, google_api_key)
-            results["_debug_ranking_result"] = ranking_result # Store for debug
-
-            if ranking_result.get("error"):
-                task_errors.append(f"JD Ranking error: {ranking_result['error']}")
-                # Keep the UNRANKED combined list if ranking fails
-                results["ranked_jd_requirements"] = combined_jd_reqs_for_ranking
-                logging.warning(f"JD Ranking failed, using unranked combined requirements list. Error: {ranking_result['error']}")
-            else:
-                results["ranked_jd_requirements"] = ranking_result.get("ranked_list", []) # Store the ranked list
-                logging.info("Data Prep Step 3: JD Ranking successful.")
-        else:
-            # Handle cases where no requirements were found in the combined categories
-            results["ranked_jd_requirements"] = []
-            if not task_errors: # Only add this error if JD extraction didn't already fail
-                 no_req_msg = "JD Ranking skipped: No requirements found in selected JD categories."
-                 task_errors.append(no_req_msg)
-                 logging.warning(no_req_msg)
-            # else: JD extraction failure already noted in task_errors
-
-        # --- STEP 4: Identify Missing Keywords (Using Same Combined Categories) ---
+        # --- STEP 4: Identify Missing Keywords (Using Combined List) ---
         logging.info("Data Prep Step 4: Identifying Missing Keywords (Resume vs Combined JD Requirements)...")
-        # Use the same combined list used for ranking (or derive it again if preferred)
-        # Variable `combined_jd_reqs_for_ranking` holds the list from Step 3.
+        # Use the combined list generated in Step 3
+        # Variable `combined_requirements_list` holds the list.
         resume_keywords_list = results.get("resume_data", {}).get("extracted_keywords", [])
+        valid_resume_keywords_list = isinstance(resume_keywords_list, list)
 
-        # Check if we have a valid list from JD and resume keywords were successfully extracted (can be empty)
-        # combined_jd_reqs_for_ranking is guaranteed to be a list here (empty or populated)
-        valid_resume_keywords_list = isinstance(resume_keywords_list, list) # Check if resume extraction yielded a list
-
-        if combined_jd_reqs_for_ranking and valid_resume_keywords_list:
+        # Use combined_requirements_list directly
+        if combined_requirements_list and valid_resume_keywords_list:
             try:
-                # Ensure JD keywords are strings and lowercased for comparison set
                 jd_keywords_set = set(
-                    str(kw).lower().strip() for kw in combined_jd_reqs_for_ranking
+                    str(kw).lower().strip() for kw in combined_requirements_list
                     if isinstance(kw, (str, int, float)) and str(kw).strip()
                 )
-                # Resume keywords are already lowercased list of strings from parsing function
-                resume_keywords_set = set(resume_keywords_list)
+                resume_keywords_set = set(resume_keywords_list) # Assumes already clean list of strings
 
                 missing_keywords = sorted(list(jd_keywords_set - resume_keywords_set))
                 results["missing_keywords_from_resume"] = missing_keywords
                 logging.info(f"Data Prep Step 4: Identified {len(missing_keywords)} potentially missing keywords.")
             except Exception as kw_err:
                 task_errors.append(f"Keyword comparison error: {kw_err}")
-                results["missing_keywords_from_resume"] = [] # Reset on error
+                results["missing_keywords_from_resume"] = []
                 logging.error(f"Error during keyword comparison: {kw_err}", exc_info=True)
         else:
             results["missing_keywords_from_resume"] = []
-            if not combined_jd_reqs_for_ranking and not task_errors: # Check if combined list was empty and no prior errors
-                kw_skip_msg = "Keyword Comparison skipped: No JD requirements/keywords found in selected categories."
-                task_errors.append(kw_skip_msg)
-                logging.warning(kw_skip_msg)
+            if not combined_requirements_list and not task_errors:
+                 kw_skip_msg = "Keyword Comparison skipped: No combined JD requirements/keywords found."
+                 # Avoid adding duplicate message if already noted in Step 3
+                 if "JD Combining Note" not in "; ".join(task_errors):
+                     task_errors.append(kw_skip_msg)
+                     logging.warning(kw_skip_msg)
             elif not valid_resume_keywords_list:
                  kw_skip_msg = "Keyword Comparison skipped: Resume keywords list unavailable or invalid."
                  task_errors.append(kw_skip_msg)
                  logging.warning(kw_skip_msg)
 
-
         # --- Finalize Errors ---
         if task_errors:
-            results["error"] = "; ".join(task_errors)
-            logging.error(f"Data preparation completed with errors: {results['error']}")
+            # Filter out mere 'Notes' before setting the final error string, unless it's the only message
+            final_errors = [e for e in task_errors if "Note:" not in e]
+            if not final_errors and task_errors: # Keep note if it's the only thing
+                 final_errors = task_errors
+            if final_errors:
+                 results["error"] = "; ".join(final_errors)
+                 logging.error(f"Data preparation completed with errors: {results['error']}")
+            else:
+                 logging.info("Data preparation completed with informational notes.")
+                 results["error"] = None # Explicitly clear error if only notes remained
         else:
             logging.info("Data preparation completed successfully.")
 
     except Exception as e:
-        # Catch-all for unexpected errors during the orchestration logic itself
         critical_error_msg = f"Critical Error in Data Preparation Pipeline: {e}"
-        # Prepend to existing errors if any, otherwise set it
         current_error = results.get("error")
         results["error"] = f"{critical_error_msg}; {current_error}" if current_error else critical_error_msg
         logging.error(critical_error_msg, exc_info=True)
-        # Ensure essential raw data is still present
         results["raw_resume"] = resume_content
         results["raw_jd"] = job_description
-        # Clear potentially inconsistent intermediate data if a major pipeline error occurs
         if "jd_data" not in results or not results["jd_data"]: results["jd_data"] = {}
         if "resume_data" not in results or not results["resume_data"]: results["resume_data"] = {}
-        results["ranked_jd_requirements"] = []
+        results["combined_jd_requirements"] = []
         results["missing_keywords_from_resume"] = []
 
     return results
@@ -1269,6 +1149,8 @@ async def generate_application_text_streamed(
 
             yield "\n--- Generation stopped due to missing critical JD data. ---\n"
             return # Stop generation
+        
+        combined_reqs = common_data.get("combined_jd_requirements", [])
 
         # --- Verify Essential Resume Data Pieces (Optional Warning) ---
         resume_data = common_data.get("resume_data", {})
@@ -1294,9 +1176,9 @@ async def generate_application_text_streamed(
             yield "--- Selecting top relevant experience and projects... ---\n"
 
             # --- Select Top Bullets (from Achievements) ---
-            if resume_achievements and ranked_reqs:
-                # Format achievements into strings for selection (using action verb and result)
+            if resume_achievements and combined_reqs:
                 achievement_strings = []
+            
                 for ach in resume_achievements:
                     verb = ach.get('action_verb', 'Processed') # Default verb if missing
                     result_text = ach.get('quantifiable_result')
@@ -1309,7 +1191,7 @@ async def generate_application_text_streamed(
                     logging.info(f"Attempting to select top bullets from {len(achievement_strings)} achievements based on ranked requirements.")
                     bullet_selection_result = await _select_top_bullets_llm(
                         bullets=achievement_strings,
-                        job_requirements=ranked_reqs, # Use the combined ranked list
+                        job_requirements=combined_reqs, # Use the combined ranked list
                         google_api_key=google_api_key,
                         max_bullets= 8 # Select slightly more bullets overall
                     )
@@ -1336,8 +1218,8 @@ async def generate_application_text_streamed(
 
             # --- Select Top Projects ---
             # Logic to parse projects_text remains basic, may need refinement based on resume formats
-            projects_text = resume_sections.get("projects") # Get projects section text
-            if projects_text and isinstance(projects_text, str) and ranked_reqs:
+            projects_text = resume_sections.get("projects")
+            if projects_text and isinstance(projects_text, str) and combined_reqs:
                 # Attempt simple parsing: Split by potential project markers
                 potential_projects = re.split(r'\n\s*\n(?=\*\*.*?\*\*\s*\n)', projects_text.strip()) # Split on blank lines before bold titles
                 if len(potential_projects) <= 1 and '\n**' in projects_text: # Try splitting just on bold titles
@@ -1346,11 +1228,12 @@ async def generate_application_text_streamed(
 
                 all_project_descriptions = [p.strip() for p in potential_projects if p and p.strip()]
 
+
                 if all_project_descriptions:
                     logging.info(f"Attempting to select top projects from {len(all_project_descriptions)} potential project descriptions based on ranked requirements.")
                     project_selection_result = await _select_top_projects_llm(
                         projects=all_project_descriptions,
-                        job_requirements=ranked_reqs, # Use the combined ranked list
+                        job_requirements=combined_reqs, # Use the combined ranked list
                         google_api_key=google_api_key,
                         max_projects=3 # Select top 3
                     )
@@ -1406,7 +1289,8 @@ async def generate_application_text_streamed(
 
         # Format other common data points
         # ranked_reqs is already the combined, ranked list from _prepare_common_data
-        ranked_req_str = "\n".join(f"- {req}" for req in ranked_reqs) if ranked_reqs else "N/A - Ranking may have failed or no requirements found."
+        combined_req_str = "\n".join(f"- {req}" for req in combined_reqs) if combined_reqs else "N/A - No requirements extracted or combined."
+
         # jd_data should be valid here based on checks above
         jd_title = jd_data.get('job_title', 'N/A') # Already checked this exists
         jd_company = jd_data.get('company_name', 'N/A')
@@ -1469,6 +1353,8 @@ async def generate_application_text_streamed(
                   `**Data Analyst, Fintech | Open Financial Technology Pvt. Ltd | Bengaluru, Karnataka, India** (Mar 2022 – Aug 2023)`
                 * **CRITICAL - ENSURE BLANK LINE:** There **MUST** be a **blank line** (representing a single newline character `\n` in the raw output) immediately after the entire Job Header line (including the dates) and **BEFORE** the first `*` bullet point below it. **DO NOT** put the first bullet on the line directly following the header.
                 * Subsequent lines: Accomplishments as **standard Markdown bullet points (`* `)** starting with a strong action verb. **Prioritize incorporating content from 'Selected Experience Highlights' here.** Aim for relevant bullets per job, using the highlights as the main source.
+                **Limit to a maximum of 5-8 bullet points per job entry.** Select the most impactful and relevant points, prioritizing the 'Selected Experience Highlights' provided.
+                * Prioritize incorporating content from 'Selected Experience Highlights' here. Aim for relevant bullets per job, using the highlights as the main source.
                 * Follow this multi-line structure **EXACTLY**, paying close attention to the blank line after the header:
                 ```markdown
                 ## Experience
@@ -1511,6 +1397,7 @@ async def generate_application_text_streamed(
             10. **Content Quality & Conciseness:** Be clear, professional (`{tone}`). Start bullets with action verbs. Quantify results. AVOID redundant statements. Focus on impact.
 
             **Task:** Generate the ATS-Optimized Resume draft in Markdown, adhering **STRICTLY** to ALL rules and **EXACT FORMATTING EXAMPLES**, **especially prioritizing the selected highlights** provided in the context for Experience and Projects sections. Ensure 1-2 sentence summary limit and ~80% keyword coverage/distribution. Output only Markdown.
+            including the limit of 5-8 bullets per job entry in the Experience section.
             """
             # Critique criteria remains mostly the same, but we can add checks for highlight usage
             critique_criteria = f"""
@@ -1564,7 +1451,7 @@ async def generate_application_text_streamed(
                 * Explicitly mention `{jd_company}`.
                 * Show genuine, specific interest. Reference **at least one specific detail** about the company, ideally from `External Company Research Findings` (if available and not an error message) or otherwise from the `Job Description Company Context` (`{company_context_jd}`). Examples: recent news, a stated value, a mission aspect, a specific challenge mentioned.
                 * **Crucially:** Explain *why* this specific detail resonates with the candidate or how their background/skills connect to it. Avoid generic praise. Example: "I was particularly drawn to [Specific Detail Found/Mentioned] because my experience in [Candidate Skill/Achievement] directly addresses the need for [Related Company Goal/Challenge]."
-            3.  **Evidence-Based Body Paragraphs:** Select 1-2 *most relevant* achievements or experiences from the resume (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`) that strongly address the **top ranked requirements** (`{ranked_req_str}`). Quantify results whenever possible (use achievement data). Explicitly link how these qualifications will deliver value or solve problems for `{jd_company}` in the context of this role.
+            3.  **Evidence-Based Body Paragraphs:** Select 1-2 *most relevant* achievements or experiences from the resume (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`) that strongly address the **top ranked requirements** (`{combined_reqs}`). Quantify results whenever possible (use achievement data). Explicitly link how these qualifications will deliver value or solve problems for `{jd_company}` in the context of this role.
             4.  **Keyword Integration:** Naturally incorporate relevant keywords from the 'Ranked Job Requirements', including potentially some from 'Potentially Missing Keywords' if authentically supported by the candidate's experience. Do NOT force keywords unnaturally or list them. Flag uncertainty if necessary: `[Note: Assumed relevance based on X]`.
             5.  **Tone:** Maintain the specified primary '{tone}'. Ensure it is professional, enthusiastic, and confident throughout.
             6.  **Structure & Length:** Follow standard Cover Letter format (Introduction, 1-3 Body Paragraphs, Conclusion). Aim for approximately 300-450 words. Ensure logical flow between paragraphs.
@@ -1576,7 +1463,7 @@ async def generate_application_text_streamed(
                 * How well does the draft connect the candidate's skills/experience to the *specific* needs of the `{jd_title}` role at `{jd_company}`? (Scale: Strong/Moderate/Weak)
                 * Does it use specific details effectively (from external research if provided, or JD context `{company_context_jd}`)? Is the expressed interest genuine and specific, or generic? (Scale: Specific/Somewhat Generic/Generic)
             2.  **Requirement Addressed & Evidence:**
-                * Does it clearly address the *top-ranked* requirements (`{ranked_req_str}`)? (Yes/Partially/No)
+                * Does it clearly address the *top-ranked* requirements (`{combined_reqs}`)? (Yes/Partially/No)
                 * Is the supporting evidence from the resume/achievements specific and compelling? Is quantification used effectively? (Yes/Somewhat/No)
                 * Is the link between qualifications and providing value to the company clear? (Clear/Vague/Missing)
             3.  **Keyword Integration:** Are relevant keywords used naturally and contextually within sentences? (Natural/Forced/Sparse) Are `[Note: ...]` flags used appropriately if needed? (Yes/No/NA)
@@ -1586,7 +1473,7 @@ async def generate_application_text_streamed(
             """
             refinement_instructions = f"""
             * **Address Critique Directly:** Focus on fixing weaknesses identified in the critique, especially regarding specific company/role alignment, depth of interest, clarity of evidence, and overall impact.
-            * **Strengthen Alignment & Specificity:** If alignment was weak/generic, find more concrete ways to link the candidate's strongest qualifications (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`) to the specific requirements (`{ranked_req_str}`) and company context (`{company_context_jd}` or external info). Make the 'why this company and this role' argument explicit and convincing. Remove/justify `[Note: ...]` flags.
+            * **Strengthen Alignment & Specificity:** If alignment was weak/generic, find more concrete ways to link the candidate's strongest qualifications (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`) to the specific requirements (`{combined_reqs}`) and company context (`{company_context_jd}` or external info). Make the 'why this company and this role' argument explicit and convincing. Remove/justify `[Note: ...]` flags.
             * **Enhance Evidence & Value Proposition:** Ensure the strongest, most relevant, and quantified achievements are used to back up claims about meeting top requirements. Clearly articulate the *impact* or value the candidate brings to `{jd_company}`.
             * **Refine Language & Flow:** Improve keyword integration naturally. Use strong action verbs. Enhance clarity, conciseness, and ensure the final '{tone}' is professional, confident, and engaging. Improve transitions between paragraphs.
             * **Format, Length & CTA:** Adhere to standard Cover Letter format, targeting approx. 300-450 words. Ensure a powerful closing paragraph and a clear, confident call to action.
@@ -1603,12 +1490,12 @@ async def generate_application_text_streamed(
         base_context = f"""
         **Candidate:** {name} ({email})
         **Target Job:** {jd_title} at {jd_company}
-        **Ranked Job Requirements (Most Important First - Combined from Categories):**
-{ranked_req_str}
+        **Combined Job Requirements (From JD Categories):**
+        {combined_req_str} # Use the new formatted string
         **Parsed Candidate Resume Sections (Use for context, but prioritize Selected Highlights below for Exp/Proj):**
-{resume_sections_str}
+        {resume_sections_str}
         **Extracted Candidate Resume Achievements (Sample - General Context):**
-{achievements_sample_str}
+        {achievements_sample_str}
         {selected_bullets_context_str if generation_type == TYPE_RESUME and selected_bullets_context_str else ""}
         {selected_projects_context_str if generation_type == TYPE_RESUME and selected_projects_context_str else ""}
         **Desired Tone:** {tone}
@@ -1669,7 +1556,7 @@ async def generate_application_text_streamed(
 
         **Context for Critique:**
         * **Target Job Requirements (Ranked - Combined):**
-{ranked_req_str}
+{combined_reqs}
         * **Potentially Missing Keywords Attempted:** {missing_keywords_str}
         * **Desired Tone:** {tone}
         {f'* **JD Company Context:** {company_context_jd}' if generation_type == TYPE_COVER_LETTER else ''}
