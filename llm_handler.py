@@ -1441,42 +1441,73 @@ async def generate_application_text_streamed(
         elif generation_type == TYPE_COVER_LETTER:
             # (Keep the existing Cover Letter prompts - no changes requested here)
             final_doc_type_name = "Cover Letter"
+            # --- ENHANCED PROMPT ---
             draft_task_instructions = f"""
-            **Role:** Expert Cover Letter Strategist crafting compelling narratives showing deep candidate-company alignment.
-            **Goal:** Generate a persuasive **FIRST DRAFT** cover letter (approx. 300-450 words) for `{name}` applying to `{jd_title}` at `{jd_company}`. The letter must demonstrate genuine interest based on specific research (if available via `External Company Research Findings`) or JD context (`Job Description Company Context`) and connect the candidate's value directly to the company's needs and goals.
+            **Role:** Expert Cover Letter Strategist crafting compelling, concise narratives showing deep candidate-company alignment, ultimately aiming to secure an interview.
+            **Goal:** Generate a persuasive **FIRST DRAFT** cover letter (strictly adhering to approx. **300-450 words**, typically under one page) for `{name}` applying to `{jd_title}` at `{jd_company}`. This is NOT a resume summary; it's a targeted argument. The letter must demonstrate genuine, specific interest based on research (if available via `External Company Research Findings`) or JD context (`Job Description Company Context`) and connect the candidate's unique value proposition directly to the company's needs, goals, and the role's primary requirements.
 
-            **Instructions for Cover Letter Draft:**
-            1.  **Hook:** Start with a strong, engaging opening paragraph. Immediately state the position (`{jd_title}`) being applied for. Connect `{name}`'s core value proposition or a key achievement directly to a primary need implied by the top 'Ranked Job Requirements'.
-            2.  **Demonstrate Interest & Alignment (CRITICAL):**
-                * Explicitly mention `{jd_company}`.
-                * Show genuine, specific interest. Reference **at least one specific detail** about the company, ideally from `External Company Research Findings` (if available and not an error message) or otherwise from the `Job Description Company Context` (`{company_context_jd}`). Examples: recent news, a stated value, a mission aspect, a specific challenge mentioned.
-                * **Crucially:** Explain *why* this specific detail resonates with the candidate or how their background/skills connect to it. Avoid generic praise. Example: "I was particularly drawn to [Specific Detail Found/Mentioned] because my experience in [Candidate Skill/Achievement] directly addresses the need for [Related Company Goal/Challenge]."
-            3.  **Evidence-Based Body Paragraphs:** Select 1-2 *most relevant* achievements or experiences from the resume (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`) that strongly address the **top ranked requirements** (`{combined_reqs}`). Quantify results whenever possible (use achievement data). Explicitly link how these qualifications will deliver value or solve problems for `{jd_company}` in the context of this role.
-            4.  **Keyword Integration:** Naturally incorporate relevant keywords from the 'Ranked Job Requirements', including potentially some from 'Potentially Missing Keywords' if authentically supported by the candidate's experience. Do NOT force keywords unnaturally or list them. Flag uncertainty if necessary: `[Note: Assumed relevance based on X]`.
-            5.  **Tone:** Maintain the specified primary '{tone}'. Ensure it is professional, enthusiastic, and confident throughout.
-            6.  **Structure & Length:** Follow standard Cover Letter format (Introduction, 1-3 Body Paragraphs, Conclusion). Aim for approximately 300-450 words. Ensure logical flow between paragraphs.
-            7.  **Conclusion:** Reiterate strong enthusiasm for the role and `{jd_company}`. Briefly summarize the core value proposition. Include a clear call to action, expressing eagerness for an interview to discuss qualifications further. Mention the attached resume.
+            **Core Principles for This Draft:**
+            * **Show, Don't Just Tell:** Demonstrate skills and qualities through specific examples and quantified achievements. Avoid simply listing skills or making generic claims.
+            * **Focus on Impact:** Articulate not just what the candidate did, but the *value* it brought (e.g., problems solved, efficiencies gained, revenue increased, costs reduced).
+            * **Targeted Relevance:** Every point made should directly support the candidate's fit for *this specific role* at *this specific company*.
+            * **Reader-Centric:** Write for a busy hiring manager. Make the candidate's value clear, concise, and easy to grasp quickly.
+
+            **Detailed Instructions for Cover Letter Draft:**
+            1.  **Compelling Hook (Opening Paragraph):**
+                * Start strong to grab attention immediately. State the specific position (`{jd_title}`) being applied for and where it was seen (if known).
+                * In 1-2 sentences, present `{name}`'s core value proposition by linking a significant, **quantified achievement** or highly relevant skill directly to a primary need implied by the top 'Ranked Job Requirements' or the company's context.
+
+            2.  **Demonstrate Genuine Interest & Specific Alignment (CRITICAL Body Paragraph):**
+                * Explicitly name `{jd_company}`.
+                * Show genuine, specific interest – **this is non-negotiable**. Reference **at least one concrete detail** about the company derived *first* from `External Company Research Findings` (if available and relevant, not an error message) or *secondarily* from the `Job Description Company Context` (`{company_context_jd}`). Examples: a specific project mentioned, a recent company announcement/news, a unique aspect of their mission/values in action, a market challenge they face mentioned in the JD.
+                * **Crucially:** Explain *why* this specific detail resonates personally with the candidate (e.g., "I was impressed by `{jd_company}`'s recent launch of X, as it aligns with my passion for leveraging data in Y...") *and* explicitly state how the candidate's specific skills/experience (mention 1-2 briefly) can contribute *to that specific area or goal* within the company. (e.g., "...and my background in [Relevant Skill/Experience] can directly support the success of this initiative by [Specific Contribution]"). **Avoid generic praise** like "I admire your company's innovation."
+
+            3.  **Evidence-Based Value Proposition (1-2 Body Paragraphs):**
+                * Select the 1-2 *most impactful and relevant* achievements or experiences from the resume data (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`).
+                * Focus on examples that strongly address the **highest-priority requirements** (`{combined_reqs}`).
+                * **Quantify results rigorously** wherever possible using achievement data. Use the STAR method implicitly (briefly set context, describe action, emphasize quantified result/impact).
+                * Explicitly link *how* these past successes demonstrate the candidate's ability to deliver specific value or solve similar problems for `{jd_company}` in the context of the `{jd_title}` role. (e.g., "My success in reducing X by Y% demonstrates my ability to bring similar data-driven efficiencies to your team.")
+
+            4.  **Natural Keyword Integration:**
+                * Weave relevant keywords from 'Ranked Job Requirements' (and potentially 'Potentially Missing Keywords' if clearly supported by resume evidence) naturally into your sentences to demonstrate understanding and alignment.
+                * **Do NOT force keywords, list them, or keyword-stuff.** The language must sound authentic. Use `[Note: Justification for keyword use/assumption]` flags ONLY if absolutely necessary to explain a connection that isn't obvious from the provided data.
+
+            5.  **Consistent Tone:**
+                * Maintain the specified primary '{tone}' consistently throughout.
+                * Ensure the tone is professional, genuinely enthusiastic (specific to the role/company, not generic excitement), and confidently conveys competence without arrogance.
+
+            6.  **Structure, Flow, & Length:**
+                * Follow standard Cover Letter format: Introduction (Hook), 1-3 well-structured Body Paragraphs (Alignment, Evidence), Conclusion (Call to Action).
+                * Ensure smooth, logical transitions between paragraphs. Each paragraph should build the argument.
+                * **Strictly adhere** to the target length of **approx. 300-450 words**. Brevity combined with impact is key.
+
+            7.  **Strong Conclusion & Call to Action (Closing Paragraph):**
+                * Briefly reiterate strong, specific enthusiasm for *this* role at `{jd_company}`.
+                * Summarize the core value proposition in one compelling sentence (the single biggest reason they should hire `{name}`).
+                * Include a clear, confident call to action. Express eagerness for an interview to discuss how their skills and experience can specifically benefit `{jd_company}`. (e.g., "I am eager to discuss how my [Key Skill 1] and [Key Skill 2] can contribute to [Specific Company Goal/Team]'s success.")
+                * Mention that the resume (attached or submitted) provides further detail.
             """
+            # --- End ENHANCED PROMPT ---
             critique_criteria = f"""
             **Critique Criteria (Output brief bullet points ONLY):**
             1.  **Alignment & Specificity:**
                 * How well does the draft connect the candidate's skills/experience to the *specific* needs of the `{jd_title}` role at `{jd_company}`? (Scale: Strong/Moderate/Weak)
-                * Does it use specific details effectively (from external research if provided, or JD context `{company_context_jd}`)? Is the expressed interest genuine and specific, or generic? (Scale: Specific/Somewhat Generic/Generic)
+                * Does it use specific company details effectively (from external research if provided, or JD context `{company_context_jd}`)? Is the expressed interest genuine and specific, or generic? (Scale: Specific/Somewhat Generic/Generic)
             2.  **Requirement Addressed & Evidence:**
                 * Does it clearly address the *top-ranked* requirements (`{combined_reqs}`)? (Yes/Partially/No)
-                * Is the supporting evidence from the resume/achievements specific and compelling? Is quantification used effectively? (Yes/Somewhat/No)
-                * Is the link between qualifications and providing value to the company clear? (Clear/Vague/Missing)
-            3.  **Keyword Integration:** Are relevant keywords used naturally and contextually within sentences? (Natural/Forced/Sparse) Are `[Note: ...]` flags used appropriately if needed? (Yes/No/NA)
-            4.  **Structure, Flow, & Length:** Is it well-organized (Intro/Body/Conclusion)? Does it flow logically? Is it within the target word count (approx. 300-450 words)? (Good/Fair/Poor)
-            5.  **Clarity, Conciseness, & Tone:** Readability? Professionalism? Is the '{tone}' consistent and appropriate? Is the call to action clear and strong? (Good/Fair/Poor)
-            6.  **Overall Impact & Persuasiveness:** Does the letter effectively sell the candidate and make a compelling case for an interview? (Strong/Moderate/Weak)
+                * Is the supporting evidence from the resume/achievements specific, quantified, and compelling? (Yes/Somewhat/No)
+                * Is the link between qualifications and providing *value/impact* to the company explicit? (Clear/Vague/Missing)
+            3.  **Keyword Integration:** Are relevant keywords used naturally and contextually? (Natural/Forced/Sparse) Are `[Note: ...]` flags used appropriately/justified? (Yes/No/NA)
+            4.  **Structure, Flow, & Length:** Is it well-organized? Does it flow logically? Is it within the target word count (300-450 words)? (Good/Fair/Poor)
+            5.  **Clarity, Conciseness, & Tone:** Readability? Professionalism? Is the '{tone}' consistent and appropriate (professional, enthusiastic, confident)? Is the call to action clear and strong? (Good/Fair/Poor)
+            6.  **Overall Impact & Persuasiveness:** Does the letter effectively argue *why* this candidate is a great fit and compel the reader to want an interview? (Strong/Moderate/Weak)
             """
             refinement_instructions = f"""
-            * **Address Critique Directly:** Focus on fixing weaknesses identified in the critique, especially regarding specific company/role alignment, depth of interest, clarity of evidence, and overall impact.
+            * **Address Critique Directly:** Focus on fixing weaknesses identified in the critique, especially regarding specific company/role alignment, depth of interest, clarity of evidence/impact, and overall persuasiveness.
             * **Strengthen Alignment & Specificity:** If alignment was weak/generic, find more concrete ways to link the candidate's strongest qualifications (`Parsed Candidate Resume Sections`, `Extracted Candidate Resume Achievements`) to the specific requirements (`{combined_reqs}`) and company context (`{company_context_jd}` or external info). Make the 'why this company and this role' argument explicit and convincing. Remove/justify `[Note: ...]` flags.
-            * **Enhance Evidence & Value Proposition:** Ensure the strongest, most relevant, and quantified achievements are used to back up claims about meeting top requirements. Clearly articulate the *impact* or value the candidate brings to `{jd_company}`.
-            * **Refine Language & Flow:** Improve keyword integration naturally. Use strong action verbs. Enhance clarity, conciseness, and ensure the final '{tone}' is professional, confident, and engaging. Improve transitions between paragraphs.
-            * **Format, Length & CTA:** Adhere to standard Cover Letter format, targeting approx. 300-450 words. Ensure a powerful closing paragraph and a clear, confident call to action.
+            * **Enhance Evidence & Value Proposition:** Ensure the strongest, most relevant, and quantified achievements are used to back up claims about meeting top requirements. Clearly articulate the *impact* or value the candidate brings to `{jd_company}`. Elevate descriptions beyond just tasks performed.
+            * **Refine Language & Flow:** Improve keyword integration naturally. Use strong action verbs. Enhance clarity, conciseness (eliminate filler), and ensure the final '{tone}' is professional, confident, and engaging. Improve transitions between paragraphs.
+            * **Format, Length & CTA:** Adhere to standard Cover Letter format, strictly targeting 300-450 words. Ensure a powerful closing paragraph and a clear, confident call to action.
             """
         else:
             # Handle unsupported generation types
@@ -1736,21 +1767,22 @@ async def generate_email_and_validate(
              ach = resume_achievements[0]
              strongest_achievement_str = f"{ach['action_verb']}..." # No result mentioned
 
-        # Define recipient focus based on type
+        # Define recipient focus based on type (Simplified for brevity focus)
         recipient_focus_desc = ""
         if email_recipient_type == RECIPIENT_TA_HM:
-            recipient_focus_desc = "Tailor message for Talent Acquisition/Hiring Manager. Focus on direct alignment with top requirements, quantifiable results, ROI potential, problem-solving ability, and clear value proposition. Be concise and professional."
+            recipient_focus_desc = "Message for Talent Acquisition/Hiring Manager. Be direct, professional, and clearly state purpose and interest in next steps."
         else: # RECIPIENT_GENERAL
-            recipient_focus_desc = "Tailor message for a general application or unspecified recipient. Focus on clear communication, enthusiasm, professionalism, highlighting transferable skills, and key qualifications relevant to the role and company. Ensure easy readability and clarity."
+            recipient_focus_desc = "Message for general application/unspecified recipient. Be clear, professional, state purpose, and express interest in moving forward."
 
         # Prepare job link display for prompt
         job_link_display = job_link if job_link and job_link.strip().startswith(('http:', 'https:')) else "Not Provided"
 
 
-        # --- 3. Construct Email Generation Prompt ---
+        # --- 3. Construct SIMPLIFIED Email Generation Prompt ---
+        # NOTE: This prompt is revised based on user request for simpler, shorter emails.
         email_prompt = f"""
-        **Role:** Expert Email Copywriter specializing in concise, impactful, and professional job application emails.
-        **Goal:** Generate a compelling email (target word count: 150-250 words) for `{name}` to express interest in the `{jd_title}` role at `{jd_company}`. The email should be tailored to the recipient type and encourage them to review the application.
+        **Role:** Email Copywriter specializing in **brief, clear, and professional** job application notifications.
+        **Goal:** Generate a **simple and short email** (target word count: **75-125 words**) for `{name}` to express interest in the `{jd_title}` role at `{jd_company}` and notify the recipient about the application/resume.
 
         **Candidate Info:**
         * Name: {name}
@@ -1762,31 +1794,26 @@ async def generate_email_and_validate(
         * Job Posting Link: {job_link_display}
         * Recipient Type: {email_recipient_type}
         * Recipient Focus: {recipient_focus_desc}
-        * Desired Tone: {tone} (apply professionally, ensure confidence and impact)
+        * Desired Tone: {tone} (apply professionally, ensure clarity and brevity)
 
-        **Key Context for Email Content:**
-        * Top 3 Job Requirements (Ranked):
-            {top_3_reqs_str}
-        * Example Candidate Achievement: {strongest_achievement_str}
-        * Brief Company Context (from JD): {company_context or 'N/A'}
+        **Key Context (Optional Use for slight tailoring):**
+        * Top Job Requirement: {top_3_reqs_str.splitlines()[0] if top_3_reqs_str else 'N/A'}
         * Candidate Resume Highlight: {resume_summary_for_prompt}
 
-        **Instructions for Email Generation:**
-        1.  **Subject Line:** Create a clear, professional, and informative subject line. Include the Job Title and Candidate Name (e.g., `Application: {jd_title} - {name}` or `Interest in {jd_title} Opportunity - {name}`).
-        2.  **Opening:** Start concisely. State the purpose (applying for `{jd_title}`) and immediately connect the candidate's core strength or the example achievement to a top requirement.
-        3.  **Body Paragraph 1 (Evidence & Impact):** Briefly elaborate on the candidate's suitability. Showcase the single most impactful relevant skill or achievement (drawing inspiration from the example achievement provided). If possible, hint at the quantifiable impact. Tailor the emphasis based on the `{recipient_focus_desc}`.
-        4.  **Body Paragraph 2 (Company Connection - Brief):** Briefly express genuine interest in `{jd_company}` or the specific role. If the `{company_context}` provides useful detail, reference it concisely to show alignment (e.g., "I'm particularly interested in [Company]'s work in [area from context]..."). Keep this very short (1-2 sentences max).
-        5.  **Keyword Integration:** Naturally weave in 1-2 other relevant keywords from the top requirements list if it fits the flow. Prioritize clarity and natural language over forcing keywords.
-        6.  **Job Link Reference:** If a valid Job Posting Link was provided (`{job_link_display}` is a URL), smoothly mention applying via that link or reference the specific posting (e.g., "...applying for the {jd_title} position posted [here/on LinkedIn/your website]."). Omit reference if no link was provided.
-        7.  **Conciseness & Tone:** Adhere strictly to the '{tone}'. Be highly concise (aim for 150-250 words). Use clear, professional language appropriate for the recipient. Ensure excellent readability.
-        8.  **Call to Action:** Conclude professionally. Express strong enthusiasm for the opportunity and indicate readiness for next steps (e.g., "I am eager to discuss how my skills can benefit [Company]..."). Mention that the resume is attached or was submitted via the link/portal.
-        9.  **Signature:** Include Name and Email. Optionally include Phone and LinkedIn profile URL.
+        **Instructions for SHORT Email Generation:**
+        1.  **Subject Line:** Create a clear and standard subject line. Include Job Title and Candidate Name (e.g., `Application: {jd_title} - {name}` or `Interest in {jd_title} - {name}`).
+        2.  **Opening:** Start directly. State the purpose (expressing interest in/applying for `{jd_title}` at `{jd_company}`).
+        3.  **Body Paragraph (Brief):** In 1-2 sentences, briefly state suitability. You might mention relevant years of experience OR briefly reference the top requirement OR use a phrase from the resume highlight. Mention that the resume is attached or was submitted. Keep it concise. *Avoid detailed examples or quantification.*
+        4.  **Job Link Reference (If applicable):** If `{job_link_display}` is a URL, briefly mention applying via the link (e.g., "...position posted on [Platform/your website].").
+        5.  **Conciseness & Tone:** Strictly adhere to the '{tone}' ensuring it's professional. Be very concise (aim for **75-125 words**). Use simple, direct language.
+        6.  **Call to Action:** Conclude professionally. Express interest in hearing about the next steps for the application.
+        7.  **Signature:** Include Name and Email. Optionally include Phone and LinkedIn profile URL if desired.
 
         **Output ONLY the email content, starting with the Subject line and followed by the body and signature. No extra commentary or explanations.**
 
         Subject: [Your Subject Line Here]
 
-        [Body of the email, approx. 150-250 words]
+        [Body of the email, approx. 75-125 words]
 
         [Signature Block:
         {name}
@@ -1795,7 +1822,7 @@ async def generate_email_and_validate(
         [Optional: LinkedIn URL]
         ]
         """
-
+        
         # --- 4. Generate Email ---
         logging.info("Email Gen: Calling LLM to generate email...")
         generated_email_result = await _call_llm_async(
