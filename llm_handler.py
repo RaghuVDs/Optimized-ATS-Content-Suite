@@ -1484,7 +1484,7 @@ async def generate_application_text_streamed(
             return
 
 
-        # --- Construct Full Prompts ---
+        # --- Construct Full Prompts --
         # Base context shared by draft and refinement prompts
         # ADD the selected highlights context conditionally for resumes
         base_context = f"""
