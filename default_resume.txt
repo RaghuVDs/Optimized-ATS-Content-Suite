@@ -31,13 +31,13 @@ Defined and implemented data quality controls for batch and real-time data, part
 Utilized Python to automate the collation, extraction, and preparation of data from diverse sources for analysis, saving approximately 7.5 hours of manual data preparation time per week.
 Ensured application stability and data accuracy through rigorous unit/end-to-end testing and continuous operational support.
 Collaborated with various stakeholders (Product, Marketing, Tech) to understand technical specifications, translate business requirements into analytical solutions, and ensure data integrity across projects.
-Performed funnel analysis to identify critical drop-offs in signup and KYC processes (initially 35%-65%), leading to A/B testing and workflow optimizations that reduced attrition/drop-offs significantly (by 25% - 65%) and increased conversion rates.
-Analyzed customer behavior across 250,000+ monthly active users using SQL and Python, leading to initiatives that increased app engagement by up to 80% (or 2x).
+Performed funnel analysis to identify critical drop-offs in signup and KYC processes (initially 35%), leading to A/B testing and workflow optimizations that reduced attrition/drop-offs significantly (to 25%) and increased conversion rates.
+Analyzed customer behavior across 250,000+ monthly active users using SQL and Python, leading to initiatives that increased app engagement by up to 2x.
 Leveraged SQL to analyze over 100M data points, uncovering key insights into customer churn and renewal rates.
 Drove customer retention by optimizing workflows via A/B testing, reducing drop-offs by 25% and improving satisfaction scores.
-Developed Python scripts to automate weekly, monthly, and quarterly KPI reports, reducing manual reporting efforts by 15 hours weekly (or 25-40%).
+Developed Python scripts to automate weekly, monthly, and quarterly KPI reports, reducing manual reporting efforts by 15 hours weekly.
 Partnered with product and business teams to align ETL pipelines and reporting with strategic KPIs, improving data accessibility and decision-making.
-Enhanced database query efficiency by 20-30% through advanced SQL techniques and optimization.
+Enhanced database query efficiency by 20% through advanced SQL techniques and optimization.
 Boosted sales efficiency by 10-18% through targeted SQL and Python analyses supporting revenue growth.
 Implemented a real-time alert system in Metabase to flag suspicious merchant IP addresses, reducing onboarding fraud risk by 2%.
 Automated merchant billing processes using Python, improving accuracy and reducing manual effort.
@@ -47,12 +47,6 @@ Associate Data Analyst, XLDynamics Pvt. Ltd, Mysore, Karnataka, India           
 Streamlined loan processing and data cleansing to a U.S. mortgage company using advanced Excel functions (LOOKUPs, INDEX MATCH, XNPV), Power Query and Power Pivot  reducing report time and enhancing analytical productivity.
 Developed Power BI dashboards for loan management, improving decision-making speed and operational workflow efficiency.
 Led knowledge transfer for two new hires on standardized procedures, fostering team efficiency and maintaining high accuracy in daily reporting and loan review processes.
-Leveraged Pandas for efficient cleaning, transformation, and manipulation of large datasets, preparing them for detailed analysis and visualization in Power BI and Excel.
-Designed and developed interactive Power BI dashboards from diverse data sources, translating complex data into actionable insights and effectively communicating findings to stakeholders.
-Utilized advanced Excel functions, Power Query, and Power Pivot for in-depth data analysis, modeling, and generating detailed reports requiring meticulous attention to detail.
-Applied strong problem-solving skills using a combination of Pandas and Excel to identify, analyze, and resolve data inconsistencies, ensuring data integrity for reporting.
-Collaborated effectively with cross-functional teams to define data requirements and deliver analytical solutions using Power BI and Excel that aligned with business objectives.
-Demonstrated adaptability by efficiently managing multiple data analysis tasks, utilizing Pandas, Power BI, and Excel appropriately to meet project deadlines and evolving requirements.
 
 Technical Skills & Tools
 
