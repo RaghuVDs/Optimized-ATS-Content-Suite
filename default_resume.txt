@@ -25,6 +25,12 @@ Automated the analysis of product reviews using Python, NLP (Gemini, Hugging Fac
 Built a machine learning regression model for credit card enhancement, increasing loan approvals by 38% and decreasing bad debt by 21%.
 Designed and maintained 50+ interactive dashboards in Tableau and Metabase, utilizing LOD calculations, parameter-driven filters, complex joins, and visualizing KPIs (CAC, GTV, Churn) to meet dynamic business needs.
 Implemented row-level security in Tableau across 8+ user groups, ensuring GDPR compliance and data privacy.
+Authored complex SQL queries for data extraction based on business needs; significantly improved query performance by an average of 15% and enhanced report efficiency through debugging and optimization techniques.
+Analyzed marketing campaign performance, delivering regular reports and leveraging insights to drive data-informed improvements, contributing to a ~12% uplift in key campaign metrics.
+Defined and implemented data quality controls for batch and real-time data, partnering with technology teams to build robust validation frameworks and reducing critical data errors by ~17%.
+Utilized Python to automate the collation, extraction, and preparation of data from diverse sources for analysis, saving approximately 7.5 hours of manual data preparation time per week.
+Ensured application stability and data accuracy through rigorous unit/end-to-end testing and continuous operational support.
+Collaborated with various stakeholders (Product, Marketing, Tech) to understand technical specifications, translate business requirements into analytical solutions, and ensure data integrity across projects.
 Performed funnel analysis to identify critical drop-offs in signup and KYC processes (initially 35%-65%), leading to A/B testing and workflow optimizations that reduced attrition/drop-offs significantly (by 25% - 65%) and increased conversion rates.
 Analyzed customer behavior across 250,000+ monthly active users using SQL and Python, leading to initiatives that increased app engagement by up to 80% (or 2x).
 Leveraged SQL to analyze over 100M data points, uncovering key insights into customer churn and renewal rates.
@@ -41,6 +47,12 @@ Associate Data Analyst, XLDynamics Pvt. Ltd, Mysore, Karnataka, India           
 Streamlined loan processing and data cleansing to a U.S. mortgage company using advanced Excel functions (LOOKUPs, INDEX MATCH, XNPV), Power Query and Power Pivot  reducing report time and enhancing analytical productivity.
 Developed Power BI dashboards for loan management, improving decision-making speed and operational workflow efficiency.
 Led knowledge transfer for two new hires on standardized procedures, fostering team efficiency and maintaining high accuracy in daily reporting and loan review processes.
+Leveraged Pandas for efficient cleaning, transformation, and manipulation of large datasets, preparing them for detailed analysis and visualization in Power BI and Excel.
+Designed and developed interactive Power BI dashboards from diverse data sources, translating complex data into actionable insights and effectively communicating findings to stakeholders.
+Utilized advanced Excel functions, Power Query, and Power Pivot for in-depth data analysis, modeling, and generating detailed reports requiring meticulous attention to detail.
+Applied strong problem-solving skills using a combination of Pandas and Excel to identify, analyze, and resolve data inconsistencies, ensuring data integrity for reporting.
+Collaborated effectively with cross-functional teams to define data requirements and deliver analytical solutions using Power BI and Excel that aligned with business objectives.
+Demonstrated adaptability by efficiently managing multiple data analysis tasks, utilizing Pandas, Power BI, and Excel appropriately to meet project deadlines and evolving requirements.
 
 Technical Skills & Tools
 
