@@ -801,29 +801,29 @@ async def _select_top_bullets_llm(
     return result
 
 
-# --- Select Top Projects based on JD (Async LLM) ---
 async def _select_top_projects_llm(
-    projects: List[str],               # Assumes a list of project description strings
+    projects: List[str],             # Assumes a list of project description strings
     job_requirements: List[str],
     google_api_key: str,
     model_name: str = EXTRACTION_MODEL_NAME,
-    max_projects: int = 3              # Default to selecting top 3
+    max_projects: int = 3            # Default to selecting top 3
 ) -> Dict[str, Any]:
     """
     Uses an LLM to select the top 3 most relevant projects from a list based on job requirements.
     Assumes each project in the list is a string description.
+    Applies relaxed validation (case/whitespace insensitive) to LLM selection.
     """
     if not projects:
         return {"selected_list": [], "error": "No projects provided for selection."}
     if not job_requirements:
         logging.warning("No job requirements provided for project selection. Returning original projects (up to max).")
-        # Return original projects up to the limit, no error reported upstream
         return {"selected_list": projects[:max_projects], "error": None}
 
     # Format inputs for the prompt
     projects_str = "\n".join(f"- {p}" for p in projects)
     requirements_str = "\n".join(f"- {r}" for r in job_requirements)
 
+    # --- MODIFICATION: Strengthen prompt instruction for exact text ---
     prompt = f"""
     **Task:** Analyze the following 'List of Resume Projects' and select the ones most relevant to the 'Target Job Requirements'.
 
@@ -838,11 +838,12 @@ async def _select_top_projects_llm(
     2.  Identify and select **up to {max_projects}** projects from the *original list* that demonstrate the strongest alignment and relevance to the *most important* job requirements.
     3.  Prioritize projects that showcase skills, technologies, or outcomes directly mentioned or implied in the job requirements.
     4.  Return ONLY a valid JSON object containing a single key: "selected_projects".
-    5.  The value of "selected_projects" MUST be a list containing the exact text of the selected project descriptions, ordered from most relevant to least relevant according to your analysis.
+    5.  The value of "selected_projects" MUST be a list containing the **exact, unmodified text** of the selected project descriptions from the original list, ordered from most relevant to least relevant according to your analysis. **Do not rephrase or summarize the selected projects.** # <-- Added Emphasis
     6.  The list MUST contain **no more than {max_projects}** projects. If the original list has fewer than {max_projects} relevant projects, return only the relevant ones. If the original list itself has fewer than {max_projects} projects, return all of them if they seem relevant.
 
     **JSON Output (containing ONLY the "selected_projects" key):**
     """
+    # --- END MODIFICATION ---
 
     # Default to original N projects in case of failure below
     result = {"selected_list": projects[:max_projects], "error": None}
@@ -873,28 +874,46 @@ async def _select_top_projects_llm(
                     if isinstance(item, str) and str(item).strip()
                 ][:max_projects] # Ensure max length constraint is applied *after* LLM potentially violates it
 
-                # More robust check: Ensure selected projects were actually present in the input list
-                original_projects_set = set(projects)
+                # --- MODIFICATION: Relaxed Validation Logic ---
+                # Create a mapping from lowercase/stripped original projects to their original form
+                original_projects_map = {p.lower().strip(): p for p in projects}
                 final_selection = []
+                processed_selected_lower = set() # Track processed items to avoid duplicates
+
                 for p_selected in validated_selected_list:
-                    # Simple check for exact match
-                    if p_selected in original_projects_set:
-                        final_selection.append(p_selected)
-                    else:
-                        logging.warning(f"LLM selected project slightly differs or wasn't in original list: '{p_selected}'")
-                        # Discarding slightly modified projects for strictness.
+                    p_selected_lower = p_selected.lower().strip()
 
-                if len(final_selection) != len(validated_selected_list):
-                    logging.warning(f"Filtered LLM selection to projects found in the original list. Original selection count: {len(validated_selected_list)}, Final count: {len(final_selection)}")
+                    # Check if the lowercase/stripped version exists in our map keys
+                    if p_selected_lower in original_projects_map and p_selected_lower not in processed_selected_lower:
+                        original_version = original_projects_map[p_selected_lower]
+                        final_selection.append(original_version) # Append the original casing/whitespace version
+                        processed_selected_lower.add(p_selected_lower) # Mark as processed
+                    elif p_selected_lower not in processed_selected_lower:
+                        # Log if it wasn't found (and wasn't a duplicate we already skipped)
+                        logging.warning(f"LLM selected project not found in original list (even after lower/strip): '{p_selected}'")
+                        # Discarding projects that don't match after normalization
+                # --- END MODIFICATION ---
 
-                if not final_selection: # Handle case where LLM hallucinates or returns nothing valid
-                    logging.warning("LLM returned no valid projects matching the original list. Falling back to top N original projects.")
+
+                # Log the outcome of the filtering/validation
+                if len(final_selection) < len(validated_selected_list):
+                     logging.warning(f"Filtered LLM project selection. LLM returned: {len(validated_selected_list)}, Validated count: {len(final_selection)}")
+                elif len(validated_selected_list) > 0 :
+                     logging.info(f"LLM project selection validated successfully. Count: {len(final_selection)}")
+
+
+                if not final_selection and validated_selected_list: # LLM returned something, but nothing validated
+                    logging.warning("LLM returned projects, but none matched originals after normalization. Falling back to top N original projects.")
                     result["selected_list"] = projects[:max_projects] # Fallback to original list (first N)
-                    result["error"] = "LLM failed to select valid projects matching originals." # Report specific issue
+                    result["error"] = "LLM failed to select valid projects matching originals after normalization." # Report specific issue
+                elif not final_selection: # LLM returned nothing valid initially
+                     logging.warning("LLM returned no valid projects or selection was empty. Falling back to top N original projects.")
+                     result["selected_list"] = projects[:max_projects]
+                     result["error"] = "LLM returned no valid projects or selection was empty."
                 else:
                     result["selected_list"] = final_selection
                     result["error"] = None # Success
-                    logging.info(f"Successfully selected {len(final_selection)} relevant projects.")
+                    logging.info(f"Successfully selected and validated {len(final_selection)} relevant projects.")
 
 
             except (json.JSONDecodeError, ValueError) as json_err:
@@ -908,10 +927,10 @@ async def _select_top_projects_llm(
                 result["error"] = error_msg
                 # Keep default selected_list on error
         else:
-             # Handle non-string response from LLM call
-             logging.error(f"Unexpected return type from _call_llm_async for project selection: {type(response_text)}")
-             result["error"] = "Error: LLM call for project selection did not return text."
-             # Keep default selected_list on error
+            # Handle non-string response from LLM call
+            logging.error(f"Unexpected return type from _call_llm_async for project selection: {type(response_text)}")
+            result["error"] = "Error: LLM call for project selection did not return text."
+            # Keep default selected_list on error
 
     except Exception as e:
         # Handle errors during the LLM call itself
