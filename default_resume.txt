@@ -1,7 +1,8 @@
 Raghuveera Narasimha
 +1(680)356-8722 |raghunaras97@gmail.com | www.linkedin.com/in/raghunaras97/ 
-Summary
 
+
+Summary
 
 Data professional with expertise in data engineering, business intelligence, and machine learning. Proven ability to design and implement end-to-end data solutions (Azure), develop and optimize ETL pipelines (ADF, Databricks, Airflow), create impactful visualizations (Tableau, Metabase), and apply ML techniques to solve business problems. Experience in the FinTech industry, focused on improving data quality and supporting data-driven decision-making.
 
@@ -55,8 +56,8 @@ Data Analysis & Business Intelligence: Python, R, SQL, Pandas, NumPy, Matplotlib
 Machine Learning & Deep Learning: Scikit-learn, Keras, CNN, R-CNN, VGGNet, BERT, GPT, Transformers
 Databases: MySQL,PostgreSQL, MongoDB, Cassandra, Redis, Neo4j
 Other Tools: Jira, Microsoft Office, Alteryx, 
-Projects
 
+Projects
 
 COVID-19 Data Pipeline and Analysis with Azure Data Factory
 Automated ETL workflows using Azure Data Factory (ADF) with Data Flows and Databricks/HDInsight, reducing manual effort by 40% via triggers, parameters, and dynamic variables.
