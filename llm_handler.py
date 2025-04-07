@@ -1798,48 +1798,91 @@ async def generate_email_and_validate(
 
 
         # --- 3. Construct SIMPLIFIED Email Generation Prompt ---
-        # NOTE: This prompt is revised based on user request for simpler, shorter emails.
+        # Inside llm_handler.py, replace the existing email_prompt string within
+# the generate_email_and_validate function with this new version:
+
         email_prompt = f"""
-        **Role:** Email Copywriter specializing in **brief, clear, and professional** job application notifications.
-        **Goal:** Generate a **simple and short email** (target word count: **75-125 words**) for `{name}` to express interest in the `{jd_title}` role at `{jd_company}` and notify the recipient about the application/resume.
+        **Role:** Professional Email Writer crafting personalized and compelling emails for job applications.
+        **Goal:** Generate a professional email (target word count: **150-250 words**) for `{name}` to express strong interest in the `{jd_title}` (Job ID: {{job_id_if_available}}) role at `{jd_company}`, introduce their qualifications, and inquire about next steps, mirroring the provided example format.
 
         **Candidate Info:**
         * Name: {name}
         * Email: {email}
+        # Add placeholders for info needed for the signature, assuming they might be passed in common_data or similar
+        * Phone: {{candidate_phone_if_available}}
+        * LinkedIn: {{candidate_linkedin_url_if_available}}
+        * GitHub: {{candidate_github_url_if_available}}
+        # Add other links like LeetCode if relevant/available
 
         **Target Information:**
         * Job Title: {jd_title}
         * Company: {jd_company}
         * Job Posting Link: {job_link_display}
-        * Recipient Type: {email_recipient_type}
-        * Recipient Focus: {recipient_focus_desc}
-        * Desired Tone: {tone} (apply professionally, ensure clarity and brevity)
+        * Job ID: {{job_id_if_available}} # Placeholder - Requires extracting Job ID if possible
+        * Recipient Name: {{recipient_name_or_default}} # Placeholder - e.g., "Hiring Manager" or specific name
+        * Recipient Role: {{recipient_role_if_available}} # Placeholder - e.g., "Technical Recruiter"
+        * Desired Tone: {tone} (apply professionally, ensure clarity, express enthusiasm)
 
-        **Key Context (Optional Use for slight tailoring):**
-        * Top Job Requirement: {top_3_reqs_str.splitlines()[0] if top_3_reqs_str else 'N/A'}
-        * Candidate Resume Highlight: {resume_summary_for_prompt}
+        **Key Context for Content:**
+        * Top Job Requirements: {top_3_reqs_str} # Use top requirements for focus
+        * Candidate Resume Highlight/Summary: {resume_summary_for_prompt} # Snippet of candidate background
+        * Candidate Full Resume Context: Provided previously (Use for detailed experience points if needed)
+        * Company Context (from JD): {company_context} # Info about company values/mission/challenges
 
-        **Instructions for SHORT Email Generation:**
-        1.  **Subject Line:** Create a clear and standard subject line. Include Job Title and Candidate Name (e.g., `Application: {jd_title} - {name}` or `Interest in {jd_title} - {name}`).
-        2.  **Opening:** Start directly. State the purpose (expressing interest in/applying for `{jd_title}` at `{jd_company}`).
-        3.  **Body Paragraph (Brief):** In 1-2 sentences, briefly state suitability. You might mention relevant years of experience OR briefly reference the top requirement OR use a phrase from the resume highlight. Mention that the resume is attached or was submitted. Keep it concise. *Avoid detailed examples or quantification.*
-        4.  **Job Link Reference (If applicable):** If `{job_link_display}` is a URL, briefly mention applying via the link (e.g., "...position posted on [Platform/your website].").
-        5.  **Conciseness & Tone:** Strictly adhere to the '{tone}' ensuring it's professional. Be very concise (aim for **75-125 words**). Use simple, direct language.
-        6.  **Call to Action:** Conclude professionally. Express interest in hearing about the next steps for the application.
-        7.  **Signature:** Include Name and Email. Optionally include Phone and LinkedIn profile URL if desired.
+        **Instructions for Email Generation (Follow Image Format):**
+        1.  **Subject Line:** Create a clear subject line including Job Title and Candidate Name (e.g., `Application: {jd_title} - {name}` or `Interest in {jd_title} (Job ID: {{job_id_if_available}}) - {name}`).
+        2.  **Greeting:** Use `Hi {{recipient_name_or_default}} ,` (include space before comma).
+        3.  **Opening Paragraph:**
+            * Start with a brief pleasantry like `I hope you're doing well .`
+            * State the specific position (`{jd_title}`), mention Job ID and job link {job_link_display} if available, and company (`{jd_company}`).
+            * Express high interest.
+            * If recipient role is known, briefly mention it as context (e.g., `Given your role as a {{recipient_role_if_available}}...`).
+        4.  **Body Paragraph 1 (Background & Expertise):**
+            * Briefly mention current status (e.g., `Currently pursuing Master's in [Field] at [University] (expected [Date])`).
+            * Summarize relevant professional experience (e.g., `with [X] years of professional experience as a [Previous Role] at [Previous Company]`).
+            * Highlight 1-2 key areas of expertise relevant to the `{jd_title}` and `Top Job Requirements`. Mention specific technologies/skills.
+            * Optionally, include a *brief* example of relevant work accomplished (e.g., "...worked on designing/implementing X and Y...").
+        5.  **Body Paragraph 2 (Company Fit & Inquiry):**
+            * Express specific excitement/interest about `{jd_company}`'s approach or work in the relevant field, referencing `Company Context (from JD)` if applicable.
+            * State desire to bring specific skills/experience to *this* team/company.
+            * Politely inquire about next steps or ask for guidance/insights.
+        6.  **Attachment Reference:** Include the sentence `I have attached my resume for your reference .`
+        7.  **Closing Pleasantry:** Include a brief closing like `Looking forward to your thoughts !` or `Thank you for your time and consideration.`
+        8.  **Sign-off:** Use `Best regards ,` (include space before comma).
+        9.  **Signature Block:** Format exactly as follows, including only the information provided for the candidate:
+            ```
+            {name}
 
-        **Output ONLY the email content, starting with the Subject line and followed by the body and signature. No extra commentary or explanations.**
+            {{candidate_phone_if_available}} # Include only if phone number is provided
+
+            {{candidate_links_formatted}} # e.g., "LinkedIn | GitHub | LeetCode" - Include only if URLs are provided
+            {email}
+            ```
+        10. **Tone and Length:** Maintain the specified '{tone}'. Ensure the overall length is appropriate (approx. **150-250 words**). Be professional and clear.
+
+        **Output ONLY the email content, starting precisely with "Subject:" and ending precisely after the final line of the signature block. No extra commentary, introductions, or explanations.**
 
         Subject: [Your Subject Line Here]
 
-        [Body of the email, approx. 75-125 words]
+        Hi {{recipient_name_or_default}} ,
 
-        [Signature Block:
+        I hope you're doing well . [Rest of Opening Paragraph...]
+
+        [Body Paragraph 1: Background & Expertise...]
+
+        [Body Paragraph 2: Company Fit & Inquiry...]
+
+        I have attached my resume for your reference .
+        Looking forward to your thoughts !
+
+        Best regards ,
+
         {name}
+
+        {{candidate_phone_if_available}}
+
+        {{candidate_links_formatted}}
         {email}
-        [Optional: Phone Number]
-        [Optional: LinkedIn URL]
-        ]
         """
         
         # --- 4. Generate Email ---
