@@ -9,7 +9,7 @@ import logging
 # Make sure 'Union' is included in this line:
 from typing import Optional, Dict, List, Tuple, Any, AsyncGenerator, Union
 
-GENERATION_MODEL_NAME = 'gemini-2.5-pro-exp-03-25' # Or your preferred generation model
+GENERATION_MODEL_NAME = 'gemini-2.5-pro-preview-05-06' # Or your preferred generation model
 EXTRACTION_MODEL_NAME = 'gemini-1.5-pro-latest' # Or your preferred extraction model
 
 # Generation Types
