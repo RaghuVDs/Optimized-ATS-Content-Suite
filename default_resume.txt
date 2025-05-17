@@ -59,35 +59,35 @@ Other Tools: Jira, Microsoft Office, Alteryx,
 
 Projects
 
-Advance Chest Disease Detection using R-CNN
+**Advance Chest Disease Detection using R-CNN**
 Developed an AI-powered system using Faster R-CNN and the NIH ChestX-ray14 dataset to accurately identify and localize multiple chest diseases, including pneumonia and tuberculosis, from X-ray images.
 Demonstrated promising disease detection capabilities, highlighting AI's potential to assist medical professionals by enabling faster, more accurate diagnoses for improved patient care.
 
-Airfare Prediction and Optimization with PySpark
+**Airfare Prediction and Optimization with PySpark**
 Built and optimized a high-accuracy airfare prediction model (R-squared: 0.96) using PySpark and MLlib (GBTRegressor), involving rigorous data cleaning, TSQL data preparation, and advanced feature engineering.
 Delivered actionable, data-driven recommendations by creating interactive dashboards in Tableau and Power BI to visualize prediction insights and key price-influencing factors.
 
-COVID-19 Data Pipeline and Analysis with Azure Data Factory
+**COVID-19 Data Pipeline and Analysis with Azure Data Factory**
 Engineered and automated complex ETL workflows using Azure Data Factory, Data Flows, and Databricks, significantly reducing manual data processing effort by 40% through parameterized triggers and dynamic variables.
 Implemented robust data integration pipelines from diverse sources (FTP, APIs) into Azure Data Lake Storage (ADLS Gen2), improving data reliability by 30% and streamlining deployments with Azure DevOps CI/CD.
 
-Dana: The Interactive Data Assistant
+**Dana: The Interactive Data Assistant**
 Designed and developed "Dana," an interactive AI assistant that democratizes data analysis by translating natural language user queries into executable SQL commands for database interaction and file analysis.
 Integrated Large Language Models (LLMs like Google Gemini) to generate data-driven answers, summaries, automated visualizations (e.g., summary statistics, correlations), and insights within a conversational Streamlit interface.
 
-E-commerce Analytics
+**E-commerce Analytics**
 Led the end-to-end development of a relational e-commerce database using SQL Server, including conceptual/logical modeling and implementing data integrity with constraints, triggers, and stored procedures.
 Enhanced data retrieval and transactional processing efficiency in a high-traffic environment through advanced indexing strategies and deployed Power BI dashboards for comprehensive business intelligence analytics.
 
-Energy Consumption Analysis Using linear regression model
+**Energy Consumption Analysis Using regression model**
 Conducted comprehensive analysis of a large-scale energy dataset (4.2 million rows, 200 columns) using R, performing data merging, cleaning, custom transformations, and extensive EDA with ggplot2.
 Developed a linear regression model achieving 79.8% R-squared for accurate energy consumption prediction and utilized Bayesian regression and ANOVA to identify key drivers, informing energy efficiency strategies.
 
-Hyper-Optimized ATS Suite Generator
+**Hyper-Optimized ATS Suite Generator**
 Developed an asynchronous-first ATS optimization suite (Python/Streamlit) leveraging concurrent Google Gemini API calls (gemini-1.5-pro, gemini-2.5-pro-exp) and engineered a multi-turn, self-refining LLM workflow (Draft -> Critique -> Refine) for iterative resume/cover letter quality improvement.
 Implemented robust structured JSON data extraction from LLMs with Python validation, an LLM-based ATS evaluator for objective scoring, and LLM-powered relevance ranking to automatically prioritize resume content against job descriptions.
 
-Music2Movie: Personalized Recommendation System from Sound to Screen
+**Music2Movie: Personalized Recommendation System from Sound to Screen**
 Developed "Music2Movie," a novel cross-domain recommendation system suggesting top-5 movies based on mood derived from Spotify song audio features, integrating and processing multimodal data from Spotify and TMDb.
 Engineered feature extraction pipelines for audio, visual (poster embeddings), and text (sentiment analysis) data, implementing cosine similarity on cross-domain embeddings to generate personalized, music-driven film recommendations via a Streamlit interface.
 
