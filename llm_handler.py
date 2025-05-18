@@ -49,12 +49,12 @@ async def _call_llm_async(
         # Attempt to set response MIME type for models supporting it (like Gemini 1.5 Pro)
         # Check your specific model documentation if needed.
         if hasattr(gen_config, 'response_mime_type') and '1.5' in model_name: # Simple check for 1.5
-             try:
-                  gen_config.response_mime_type = "application/json"
-                  logging.info(f"Requesting JSON output via mime type for model '{model_name}'.")
-             except Exception as e_mime:
-                  # Log if setting mime type fails, but continue relying on prompt
-                  logging.warning(f"Failed to set JSON mime type for model '{model_name}': {e_mime}. Relying on prompt instructions.")
+            try:
+                gen_config.response_mime_type = "application/json"
+                logging.info(f"Requesting JSON output via mime type for model '{model_name}'.")
+            except Exception as e_mime:
+                # Log if setting mime type fails, but continue relying on prompt
+                logging.warning(f"Failed to set JSON mime type for model '{model_name}': {e_mime}. Relying on prompt instructions.")
         else:
             logging.warning(f"Model config for '{model_name}' may not support direct JSON mime type setting or is not 1.5+. Relying on prompt instructions for JSON format.")
 
@@ -93,10 +93,10 @@ async def _call_llm_async(
                                 yield chunk.text
 
                         except ValueError as val_err: # Often indicates blocked content access attempt
-                             # Check prompt feedback again in case of ValueError accessing text
+                            # Check prompt feedback again in case of ValueError accessing text
                             block_reason_str = "Unknown"
                             if chunk.prompt_feedback and chunk.prompt_feedback.block_reason:
-                                 block_reason_str = str(chunk.prompt_feedback.block_reason)
+                                block_reason_str = str(chunk.prompt_feedback.block_reason)
                             logging.warning(f"Stream chunk ValueError (likely safety block: {block_reason_str}): {val_err}")
                             yield f"\n--- ERROR: Content blocked by safety filter ({block_reason_str}) ---\n"
                             break # Stop streaming
@@ -119,13 +119,13 @@ async def _call_llm_async(
                 block_reason = "Unknown"
                 finish_reason_val = "Unknown" # Using different var name
                 if response.prompt_feedback:
-                     # Use getattr for safer access to block_reason enum/attribute
-                     block_reason_attr = getattr(response.prompt_feedback, 'block_reason', None)
-                     block_reason = str(block_reason_attr) if block_reason_attr else "Not Blocked"
+                    # Use getattr for safer access to block_reason enum/attribute
+                    block_reason_attr = getattr(response.prompt_feedback, 'block_reason', None)
+                    block_reason = str(block_reason_attr) if block_reason_attr else "Not Blocked"
 
                 # Candidate finish reason might also be relevant, check candidate existence
                 if response.candidates and response.candidates[0]:
-                     finish_reason_val = getattr(response.candidates[0], 'finish_reason', "N/A")
+                    finish_reason_val = getattr(response.candidates[0], 'finish_reason', "N/A")
 
                 logging.error(f"Response blocked or empty. Block Reason: {block_reason}. Finish Reason: {finish_reason_val}. Prompt Feedback: {response.prompt_feedback}")
                 # Raise a specific error to indicate failure
@@ -137,8 +137,8 @@ async def _call_llm_async(
                 candidate = response.candidates[0]
                 finish_reason_val = getattr(candidate, 'finish_reason', "UNKNOWN")
                 if str(finish_reason_val) != "STOP": # Check if generation finished normally
-                     logging.warning(f"Candidate generation finished with reason: {finish_reason_val}. Text might be incomplete.")
-                     # Optionally raise error or just proceed if partial text is acceptable
+                    logging.warning(f"Candidate generation finished with reason: {finish_reason_val}. Text might be incomplete.")
+                    # Optionally raise error or just proceed if partial text is acceptable
 
                 # Access text via parts if direct .text access fails or for more control
                 response_text = "".join(part.text for part in candidate.content.parts if hasattr(part, 'text')).strip()
@@ -151,14 +151,14 @@ async def _call_llm_async(
                         response_text = match.group(1).strip()
                         # Basic check if the extracted part looks like JSON
                         if not (response_text.startswith(('{', '[')) and response_text.endswith(('}', ']'))):
-                              logging.warning("Extracted content from ```json block doesn't look like JSON.")
-                              # Decide fallback: Use original or raise error? Let's log and use it for now.
+                            logging.warning("Extracted content from ```json block doesn't look like JSON.")
+                            # Decide fallback: Use original or raise error? Let's log and use it for now.
                     else:
-                         # Fallback if no ```json block found: Remove markers if they exist
-                         response_text = re.sub(r"^```json\s*|\s*```$", "", response_text, flags=re.MULTILINE).strip()
-                         # Basic check again
-                         if not (response_text.startswith(('{', '[')) and response_text.endswith(('}', ']'))):
-                              logging.warning("JSON requested, but response doesn't look like JSON after cleaning markers.")
+                        # Fallback if no ```json block found: Remove markers if they exist
+                        response_text = re.sub(r"^```json\s*|\s*```$", "", response_text, flags=re.MULTILINE).strip()
+                        # Basic check again
+                        if not (response_text.startswith(('{', '[')) and response_text.endswith(('}', ']'))):
+                            logging.warning("JSON requested, but response doesn't look like JSON after cleaning markers.")
 
                 return response_text
 
@@ -166,14 +166,14 @@ async def _call_llm_async(
                 # Check feedback again, as the block might occur here
                 block_reason = "Unknown"
                 if response.prompt_feedback:
-                     block_reason_attr = getattr(response.prompt_feedback, 'block_reason', None)
-                     block_reason = str(block_reason_attr) if block_reason_attr else "Not Blocked"
+                    block_reason_attr = getattr(response.prompt_feedback, 'block_reason', None)
+                    block_reason = str(block_reason_attr) if block_reason_attr else "Not Blocked"
                 logging.error(f"Response text access error (likely safety block: {block_reason}): {val_err}. Prompt Feedback: {response.prompt_feedback}", exc_info=True)
                 raise ValueError(f"Response blocked by safety filter (access error: {block_reason}): {val_err}")
             except IndexError:
-                 # Handle case where response.candidates is empty after the initial check (shouldn't happen ideally)
-                 logging.error("Response has no candidates even after initial check passed.")
-                 raise RuntimeError("Failed to access response candidate.")
+                # Handle case where response.candidates is empty after the initial check (shouldn't happen ideally)
+                logging.error("Response has no candidates even after initial check passed.")
+                raise RuntimeError("Failed to access response candidate.")
             except Exception as e_text:
                 logging.error(f"Error extracting text from response parts: {e_text}", exc_info=True)
                 raise RuntimeError(f"Failed to extract text from response: {e_text}")
@@ -215,14 +215,14 @@ async def generate_linkedin_message(
         # Craft a concise connection reason
         connection_reason = ""
         if connection_name:
-             # More concise and slightly personalized if name is known
-             connection_reason = f"Impressed by your profile/activity related to {jd_company}."
+            # More concise and slightly personalized if name is known
+            connection_reason = f"Impressed by your profile/activity related to {jd_company}."
         else:
-             # Focus on company interest, use context if concise
-             if company_context and len(company_context) < 80: # Check length before including
-                  connection_reason = f"Keenly interested in {jd_company}'s work, particularly regarding {company_context}."
-             else:
-                  connection_reason = f"Keenly interested in {jd_company}'s work and the {jd_title} role."
+            # Focus on company interest, use context if concise
+            if company_context and len(company_context) < 80: # Check length before including
+                connection_reason = f"Keenly interested in {jd_company}'s work, particularly regarding {company_context}."
+            else:
+                connection_reason = f"Keenly interested in {jd_company}'s work and the {jd_title} role."
 
 
         # --- Prompt Definition ---
@@ -281,18 +281,18 @@ async def generate_linkedin_message(
 
                 # If no sentence end found, try common punctuation like comma
                 if cut_off_point == -1:
-                     for char in [',', ';']:
-                           point = message[:max_len].rfind(char)
-                           min_reasonable_len = max(max_len - 100, 0)
-                           if point > max(cut_off_point, min_reasonable_len):
-                                cut_off_point = point
+                    for char in [',', ';']:
+                        point = message[:max_len].rfind(char)
+                        min_reasonable_len = max(max_len - 100, 0)
+                        if point > max(cut_off_point, min_reasonable_len):
+                            cut_off_point = point
 
                 # If still no good punctuation break, try the last space
                 if cut_off_point == -1:
-                     point = message[:max_len].rfind(' ')
-                     min_reasonable_len = max(max_len - 100, 0)
-                     if point > max(cut_off_point, min_reasonable_len):
-                          cut_off_point = point
+                    point = message[:max_len].rfind(' ')
+                    min_reasonable_len = max(max_len - 100, 0)
+                    if point > max(cut_off_point, min_reasonable_len):
+                        cut_off_point = point
 
                 # Perform the truncation
                 if cut_off_point != -1:
@@ -301,10 +301,10 @@ async def generate_linkedin_message(
 
                     # Add ellipsis if space permits and not already ending punctuation
                     if message[-1] not in ['.','?','!'] and len(message) + 3 <= max_len:
-                         message += "..."
+                        message += "..."
                     # If ellipsis doesn't fit, just use the truncated message up to max_len
                     elif len(message) > max_len:
-                         message = message[:max_len]
+                        message = message[:max_len]
 
                     logging.info(f"Cleanly truncated message to {len(message)} chars.")
                 else:
@@ -314,16 +314,16 @@ async def generate_linkedin_message(
 
             # Final length check just in case truncation logic had issues
             if len(message) > max_len:
-                 message = message[:max_len]
-                 logging.warning(f"Message still exceeded max_len after truncation attempts. Forced to {len(message)} chars.")
+                message = message[:max_len]
+                logging.warning(f"Message still exceeded max_len after truncation attempts. Forced to {len(message)} chars.")
 
             logging.info(f"Final LinkedIn message length: {len(message)} chars.")
             return message
         else:
-             # Handle unexpected return type (e.g., if helper returned generator or None)
-             logging.error(f"Unexpected return type from _call_llm_async for LinkedIn message: {type(message_result)}")
-             # Provide a user-facing error message
-             return f"Error: Could not generate message (unexpected result type)."
+            # Handle unexpected return type (e.g., if helper returned generator or None)
+            logging.error(f"Unexpected return type from _call_llm_async for LinkedIn message: {type(message_result)}")
+            # Provide a user-facing error message
+            return f"Error: Could not generate message (unexpected result type)."
 
 
     except Exception as e:
@@ -404,12 +404,12 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                 # Validate 'sections' structure
                 sections = parsed_json.get("sections")
                 if not isinstance(sections, dict):
-                     logging.warning("Invalid 'sections' structure received from LLM. Resetting to basic.")
-                     sections = {"full_text": resume_content} # Fallback
+                    logging.warning("Invalid 'sections' structure received from LLM. Resetting to basic.")
+                    sections = {"full_text": resume_content} # Fallback
                 # Ensure 'full_text' key exists, add if missing
                 if "full_text" not in sections:
-                     sections["full_text"] = resume_content
-                     logging.info("Added missing 'full_text' key to sections.")
+                    sections["full_text"] = resume_content
+                    logging.info("Added missing 'full_text' key to sections.")
 
                 # Validate 'extracted_keywords' structure and content
                 keywords_raw = parsed_json.get("extracted_keywords")
@@ -472,7 +472,7 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                     except Exception as char_e:
                         problem_char_info = f"Error accessing character at position {err_pos}: {char_e}"
                 elif err_pos == len(raw_json_string):
-                     problem_char_info = "Error occurred at the very end of the string (potentially incomplete JSON)."
+                        problem_char_info = "Error occurred at the very end of the string (potentially incomplete JSON)."
 
                 logging.error(f"{err_msg} {problem_char_info}. {snippet_info}")
                 # Optionally log more context for debugging:
@@ -483,11 +483,11 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                 return error_result
 
             except ValueError as val_err: # Catch validation errors raised within the try block
-                 logging.error(f"Validation error during resume JSON processing: {val_err}", exc_info=True)
-                 error_result["error"] = f"Error validating parsed resume JSON structure: {val_err}"
-                 # Include a snippet of the raw JSON that caused validation failure
-                 error_result["raw_response_snippet"] = raw_json_string[:500]
-                 return error_result
+                logging.error(f"Validation error during resume JSON processing: {val_err}", exc_info=True)
+                error_result["error"] = f"Error validating parsed resume JSON structure: {val_err}"
+                # Include a snippet of the raw JSON that caused validation failure
+                error_result["raw_response_snippet"] = raw_json_string[:500]
+                return error_result
 
             except Exception as e_inner: # Catch any other unexpected errors during processing
                 logging.error(f"Unexpected error during resume JSON processing: {e_inner}", exc_info=True)
@@ -495,10 +495,10 @@ async def parse_resume_advanced_llm(resume_content: str, google_api_key: str) ->
                 error_result["raw_response_snippet"] = raw_json_string[:500]
                 return error_result
         else:
-             # Handle case where LLM call did not return a string
-             logging.error(f"Unexpected return type from _call_llm_async for resume parsing: {type(response_text)}")
-             error_result["error"] = "Error: LLM call for resume parsing did not return text."
-             return error_result
+            # Handle case where LLM call did not return a string
+            logging.error(f"Unexpected return type from _call_llm_async for resume parsing: {type(response_text)}")
+            error_result["error"] = "Error: LLM call for resume parsing did not return text."
+            return error_result
 
     # --- Handle Outer LLM Call Errors ---
     except Exception as e:
@@ -612,7 +612,7 @@ Key Extraction Details:
                     # --- Validate/normalize LIST fields ---
                     if key in list_keys:
                         if value is None:
-                             # LLM might return null instead of [], normalize to []
+                            # LLM might return null instead of [], normalize to []
                             validated_data[key] = []
                             logging.info(f"JD Extraction: Key '{key}' was null, normalized to empty list [].")
                         elif isinstance(value, list):
@@ -639,14 +639,14 @@ Key Extraction Details:
                         if value is None:
                             validated_data[key] = None # Accept null
                         elif isinstance(value, str):
-                             # Accept string, strip whitespace
+                            # Accept string, strip whitespace
                             validated_data[key] = value.strip()
                         else:
                             # Unexpected type for a string field
                             logging.warning(f"JD Extraction: Invalid type for string key '{key}' ({type(value)}). Setting to null.")
                             validated_data[key] = None
                     else:
-                         # Should not happen if schema keys match code, but handle defensively
+                        # Should not happen if schema keys match code, but handle defensively
                         logging.error(f"JD Extraction: Encountered unexpected key '{key}' during validation loop. This indicates a potential code/schema mismatch.")
                         validated_data[key] = value # Assign raw value if unsure
 
@@ -787,10 +787,10 @@ async def _select_top_bullets_llm(
                 result["error"] = error_msg
                 # Keep default selected_list on error
         else:
-             # Handle non-string response from LLM call
-             logging.error(f"Unexpected return type from _call_llm_async for bullet selection: {type(response_text)}")
-             result["error"] = "Error: LLM call for bullet selection did not return text."
-             # Keep default selected_list on error
+            # Handle non-string response from LLM call
+            logging.error(f"Unexpected return type from _call_llm_async for bullet selection: {type(response_text)}")
+            result["error"] = "Error: LLM call for bullet selection did not return text."
+            # Keep default selected_list on error
 
     except Exception as e:
         # Handle errors during the LLM call itself
@@ -802,11 +802,11 @@ async def _select_top_bullets_llm(
 
 
 async def _select_top_projects_llm(
-    projects: List[str],             # Assumes a list of project description strings
+    projects: List[str],            # Assumes a list of project description strings
     job_requirements: List[str],
     google_api_key: str,
     model_name: str = EXTRACTION_MODEL_NAME,
-    max_projects: int = 3            # Default to selecting top 3
+    max_projects: int = 3           # Default to selecting top 3
 ) -> Dict[str, Any]:
     """
     Uses an LLM to select the top 3 most relevant projects from a list based on job requirements.
@@ -897,9 +897,9 @@ async def _select_top_projects_llm(
 
                 # Log the outcome of the filtering/validation
                 if len(final_selection) < len(validated_selected_list):
-                     logging.warning(f"Filtered LLM project selection. LLM returned: {len(validated_selected_list)}, Validated count: {len(final_selection)}")
+                    logging.warning(f"Filtered LLM project selection. LLM returned: {len(validated_selected_list)}, Validated count: {len(final_selection)}")
                 elif len(validated_selected_list) > 0 :
-                     logging.info(f"LLM project selection validated successfully. Count: {len(final_selection)}")
+                    logging.info(f"LLM project selection validated successfully. Count: {len(final_selection)}")
 
 
                 if not final_selection and validated_selected_list: # LLM returned something, but nothing validated
@@ -907,9 +907,9 @@ async def _select_top_projects_llm(
                     result["selected_list"] = projects[:max_projects] # Fallback to original list (first N)
                     result["error"] = "LLM failed to select valid projects matching originals after normalization." # Report specific issue
                 elif not final_selection: # LLM returned nothing valid initially
-                     logging.warning("LLM returned no valid projects or selection was empty. Falling back to top N original projects.")
-                     result["selected_list"] = projects[:max_projects]
-                     result["error"] = "LLM returned no valid projects or selection was empty."
+                    logging.warning("LLM returned no valid projects or selection was empty. Falling back to top N original projects.")
+                    result["selected_list"] = projects[:max_projects]
+                    result["error"] = "LLM returned no valid projects or selection was empty."
                 else:
                     result["selected_list"] = final_selection
                     result["error"] = None # Success
@@ -1016,20 +1016,20 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
                 if isinstance(category_items, list):
                     combined_requirements_list.extend(category_items)
                 elif category_items:
-                     logging.warning(f"Data Prep: Expected list for JD category '{category_key}', but got {type(category_items)}. Skipping.")
+                    logging.warning(f"Data Prep: Expected list for JD category '{category_key}', but got {type(category_items)}. Skipping.")
             # Store the combined, unranked list
             results["combined_jd_requirements"] = combined_requirements_list
             logging.info(f"Data Prep Step 3: Combined {len(combined_requirements_list)} requirements/skills across selected categories.")
             if not combined_requirements_list and not task_errors:
-                 # Add a note if extraction worked but found nothing in combined categories
-                 task_errors.append("JD Combining Note: No requirements found in selected JD categories.")
-                 logging.warning("JD Combining Note: No requirements found in selected JD categories.")
+                # Add a note if extraction worked but found nothing in combined categories
+                task_errors.append("JD Combining Note: No requirements found in selected JD categories.")
+                logging.warning("JD Combining Note: No requirements found in selected JD categories.")
 
         else:
-             logging.warning("Data Prep: JD data is not a dictionary, cannot combine requirements.")
-             results["combined_jd_requirements"] = [] # Ensure it's an empty list
-             if not task_errors: # If JD extraction didn't already fail
-                 task_errors.append("JD Combining Error: JD data structure invalid.")
+            logging.warning("Data Prep: JD data is not a dictionary, cannot combine requirements.")
+            results["combined_jd_requirements"] = [] # Ensure it's an empty list
+            if not task_errors: # If JD extraction didn't already fail
+                task_errors.append("JD Combining Error: JD data structure invalid.")
 
 
         # --- STEP 4: Identify Missing Keywords (Using Combined List) ---
@@ -1058,28 +1058,28 @@ async def _prepare_common_data(job_description: str, resume_content: str, google
         else:
             results["missing_keywords_from_resume"] = []
             if not combined_requirements_list and not task_errors:
-                 kw_skip_msg = "Keyword Comparison skipped: No combined JD requirements/keywords found."
-                 # Avoid adding duplicate message if already noted in Step 3
-                 if "JD Combining Note" not in "; ".join(task_errors):
-                     task_errors.append(kw_skip_msg)
-                     logging.warning(kw_skip_msg)
+                kw_skip_msg = "Keyword Comparison skipped: No combined JD requirements/keywords found."
+                # Avoid adding duplicate message if already noted in Step 3
+                if "JD Combining Note" not in "; ".join(task_errors):
+                    task_errors.append(kw_skip_msg)
+                    logging.warning(kw_skip_msg)
             elif not valid_resume_keywords_list:
-                 kw_skip_msg = "Keyword Comparison skipped: Resume keywords list unavailable or invalid."
-                 task_errors.append(kw_skip_msg)
-                 logging.warning(kw_skip_msg)
+                kw_skip_msg = "Keyword Comparison skipped: Resume keywords list unavailable or invalid."
+                task_errors.append(kw_skip_msg)
+                logging.warning(kw_skip_msg)
 
         # --- Finalize Errors ---
         if task_errors:
             # Filter out mere 'Notes' before setting the final error string, unless it's the only message
             final_errors = [e for e in task_errors if "Note:" not in e]
             if not final_errors and task_errors: # Keep note if it's the only thing
-                 final_errors = task_errors
+                final_errors = task_errors
             if final_errors:
-                 results["error"] = "; ".join(final_errors)
-                 logging.error(f"Data preparation completed with errors: {results['error']}")
+                results["error"] = "; ".join(final_errors)
+                logging.error(f"Data preparation completed with errors: {results['error']}")
             else:
-                 logging.info("Data preparation completed with informational notes.")
-                 results["error"] = None # Explicitly clear error if only notes remained
+                logging.info("Data preparation completed with informational notes.")
+                results["error"] = None # Explicitly clear error if only notes remained
         else:
             logging.info("Data preparation completed successfully.")
 
@@ -1133,7 +1133,7 @@ async def generate_application_text_streamed(
             yield "\n--- Generation stopped due to data preparation errors reported by prepare_common_data. ---\n"
             return # Stop generation if critical prep failed
 
-       # --- *** UPDATED: Verify Essential Data Pieces from JD *** ---
+        # --- *** UPDATED: Verify Essential Data Pieces from JD *** ---
         jd_data = common_data.get("jd_data", {})
 
         # Define the key requirement categories to check (should align with _prepare_common_data)
@@ -1162,9 +1162,9 @@ async def generate_application_text_streamed(
             yield f"DEBUG: Requirements Found (Any essential category populated): {'Yes' if requirements_present else 'No'}\n"
             # Optionally show status of individual categories
             for cat in essential_requirement_categories:
-                 cat_data = jd_data.get(cat)
-                 status = f"Present ({len(cat_data)} items)" if isinstance(cat_data, list) and cat_data else "Absent/Empty/Invalid"
-                 yield f"DEBUG:   - Category '{cat}': {status}\n"
+                cat_data = jd_data.get(cat)
+                status = f"Present ({len(cat_data)} items)" if isinstance(cat_data, list) and cat_data else "Absent/Empty/Invalid"
+                yield f"DEBUG:   - Category '{cat}': {status}\n"
 
             yield "\n--- Generation stopped due to missing critical JD data. ---\n"
             return # Stop generation
@@ -1370,7 +1370,7 @@ async def generate_application_text_streamed(
             6.  **Experience Section Format (MANDATORY EXAMPLE + NEWLINE):** For EACH entry under `## Experience`:
                 * First line: Job Header, formatted **EXACTLY** like this (bold title/co/loc, pipe separators, dates NOT bolded at end):
                   `**Data Analyst, Fintech | Open Financial Technology Pvt. Ltd | Bengaluru, Karnataka, India** (Mar 2022 – Aug 2023)`
-                * **CRITICAL - ENSURE BLANK LINE:** There **MUST** be a **blank line** (representing a single newline character `\n` in the raw output) immediately after the entire Job Header line (including the dates) and **BEFORE** the first `*` bullet point below it. **DO NOT** put the first bullet on the line directly following the header.
+                * **CRITICAL - ENSURE BLANK LINE:** There **MUST** be a **blank line** (representing a single newline character `\\n` in the raw output) immediately after the entire Job Header line (including the dates) and **BEFORE** the first `*` bullet point below it. **DO NOT** put the first bullet on the line directly following the header.
                 * Subsequent lines: Accomplishments as **standard Markdown bullet points (`* `)** starting with a strong action verb. **Prioritize incorporating content from 'Selected Experience Highlights' here.** Aim for relevant bullets per job, using the highlights as the main source.
                 **Limit to a maximum of 5-8 bullet points per job entry.** Select the most impactful and relevant points, prioritizing the 'Selected Experience Highlights' provided.
                 * Prioritize incorporating content from 'Selected Experience Highlights' here. Aim for relevant bullets per job, using the highlights as the main source.
@@ -1766,7 +1766,7 @@ async def generate_email_and_validate(
         resume_summary_for_prompt = "Relevant skills and experience outlined in attached resume." # Default
         summary_section = resume_data.get("sections", {}).get("summary")
         if summary_section and isinstance(summary_section, str) and len(summary_section) < 400:
-             resume_summary_for_prompt = f"Candidate Summary Snippet: {summary_section}"
+            resume_summary_for_prompt = f"Candidate Summary Snippet: {summary_section}"
         # Alternative: Use top keywords
         # top_keywords = resume_data.get("extracted_keywords", [])[:5]
         # if top_keywords: resume_summary_for_prompt = f"Key Skills Include: {', '.join(top_keywords)}"
@@ -1783,8 +1783,8 @@ async def generate_email_and_validate(
             ach = quantified_achievements[0]
             strongest_achievement_str = f"{ach['action_verb']}... (Result: {ach['quantifiable_result']})"
         elif resume_achievements: # Fallback to the first achievement if no quantified ones
-             ach = resume_achievements[0]
-             strongest_achievement_str = f"{ach['action_verb']}..." # No result mentioned
+            ach = resume_achievements[0]
+            strongest_achievement_str = f"{ach['action_verb']}..." # No result mentioned
 
         # Define recipient focus based on type (Simplified for brevity focus)
         recipient_focus_desc = ""
@@ -1803,24 +1803,24 @@ async def generate_email_and_validate(
 
         email_prompt = f"""
         **Role:** Professional Email Writer crafting personalized and compelling emails for job applications.
-        **Goal:** Generate a professional email (target word count: **150-250 words**) for `{name}` to express strong interest in the `{jd_title}` (Job ID: {{job_id_if_available}}) role at `{jd_company}`, introduce their qualifications, and inquire about next steps, mirroring the provided example format.
+        **Goal:** Generate a professional email (target word count: **150-250 words**) for `{name}` to express strong interest in the `{jd_title}` (Job ID: {{{{job_id_if_available}}}}) role at `{jd_company}`, introduce their qualifications, and inquire about next steps, mirroring the provided example format.
 
         **Candidate Info:**
         * Name: {name}
         * Email: {email}
         # Add placeholders for info needed for the signature, assuming they might be passed in common_data or similar
-        * Phone: {{candidate_phone_if_available}}
-        * LinkedIn: {{candidate_linkedin_url_if_available}}
-        * GitHub: {{candidate_github_url_if_available}}
+        * Phone: {{{{candidate_phone_if_available}}}}
+        * LinkedIn: {{{{candidate_linkedin_url_if_available}}}}
+        * GitHub: {{{{candidate_github_url_if_available}}}}
         # Add other links like LeetCode if relevant/available
 
         **Target Information:**
         * Job Title: {jd_title}
         * Company: {jd_company}
         * Job Posting Link: {job_link_display}
-        * Job ID: {{job_id_if_available}} # Placeholder - Requires extracting Job ID if possible
-        * Recipient Name: {{recipient_name_or_default}} # Placeholder - e.g., "Hiring Manager" or specific name
-        * Recipient Role: {{recipient_role_if_available}} # Placeholder - e.g., "Technical Recruiter"
+        * Job ID: {{{{job_id_if_available}}}} # Placeholder - Requires extracting Job ID if possible
+        * Recipient Name: {{{{recipient_name_or_default}}}} # Placeholder - e.g., "Hiring Manager" or specific name
+        * Recipient Role: {{{{recipient_role_if_available}}}} # Placeholder - e.g., "Technical Recruiter"
         * Desired Tone: {tone} (apply professionally, ensure clarity, express enthusiasm)
 
         **Key Context for Content:**
@@ -1830,13 +1830,13 @@ async def generate_email_and_validate(
         * Company Context (from JD): {company_context} # Info about company values/mission/challenges
 
         **Instructions for Email Generation (Follow Image Format):**
-        1.  **Subject Line:** Create a clear subject line including Job Title and Candidate Name (e.g., `Application: {jd_title} - {name}` or `Interest in {jd_title} (Job ID: {{job_id_if_available}}) - {name}`).
-        2.  **Greeting:** Use `Hi {{recipient_name_or_default}} ,` (include space before comma).
+        1.  **Subject Line:** Create a clear subject line including Job Title and Candidate Name (e.g., `Application: {jd_title} - {name}` or `Interest in {jd_title} (Job ID: {{{{job_id_if_available}}}}) - {name}`).
+        2.  **Greeting:** Use `Hi {{{{recipient_name_or_default}}}} ,` (include space before comma).
         3.  **Opening Paragraph:**
             * Start with a brief pleasantry like `I hope you're doing well .`
             * State the specific position (`{jd_title}`), mention Job ID and job link {job_link_display} if available, and company (`{jd_company}`).
             * Express high interest.
-            * If recipient role is known, briefly mention it as context (e.g., `Given your role as a {{recipient_role_if_available}}...`).
+            * If recipient role is known, briefly mention it as context (e.g., `Given your role as a {{{{recipient_role_if_available}}}}...`).
         4.  **Body Paragraph 1 (Background & Expertise):**
             * Briefly mention current status (e.g., `Currently pursuing Master's in [Field] at [University] (expected [Date])`).
             * Summarize relevant professional experience (e.g., `with [X] years of professional experience as a [Previous Role] at [Previous Company]`).
@@ -1853,9 +1853,9 @@ async def generate_email_and_validate(
             ```
             {name}
 
-            {{candidate_phone_if_available}} # Include only if phone number is provided
+            {{{{candidate_phone_if_available}}}} # Include only if phone number is provided
 
-            {{candidate_links_formatted}} # e.g., "LinkedIn | GitHub | LeetCode" - Include only if URLs are provided
+            {{{{candidate_links_formatted}}}} # e.g., "LinkedIn | GitHub | LeetCode" - Include only if URLs are provided
             {email}
             ```
         10. **Tone and Length:** Maintain the specified '{tone}'. Ensure the overall length is appropriate (approx. **150-250 words**). Be professional and clear.
@@ -1864,7 +1864,7 @@ async def generate_email_and_validate(
 
         Subject: [Your Subject Line Here]
 
-        Hi {{recipient_name_or_default}} ,
+        Hi {{{{recipient_name_or_default}}}} ,
 
         I hope you're doing well . [Rest of Opening Paragraph...]
 
@@ -1879,9 +1879,9 @@ async def generate_email_and_validate(
 
         {name}
 
-        {{candidate_phone_if_available}}
+        {{{{candidate_phone_if_available}}}}
 
-        {{candidate_links_formatted}}
+        {{{{candidate_links_formatted}}}}
         {email}
         """
         
@@ -1895,11 +1895,11 @@ async def generate_email_and_validate(
         )
 
         if not isinstance(generated_email_result, str) or not generated_email_result.strip():
-             # Log error and return failure
-             error_msg = "Email generation call failed or returned empty content."
-             logging.error(error_msg)
-             prep_error = common_data.get("error", "None")
-             return None, {"error": error_msg, "debug_prep_error": prep_error, "ats_score": None, "detailed_checks": {}, "overall_feedback": error_msg}
+            # Log error and return failure
+            error_msg = "Email generation call failed or returned empty content."
+            logging.error(error_msg)
+            prep_error = common_data.get("error", "None")
+            return None, {"error": error_msg, "debug_prep_error": prep_error, "ats_score": None, "detailed_checks": {}, "overall_feedback": error_msg}
 
         generated_email = generated_email_result.strip()
         logging.info("Email Gen: Email content generated successfully.")
@@ -1932,7 +1932,7 @@ async def generate_email_and_validate(
         # Include prep error info if available and seems relevant
         prep_error_info = ""
         if common_data and common_data.get("error"):
-             prep_error_info = f" (Data Prep Error: {common_data['error']})"
+            prep_error_info = f" (Data Prep Error: {common_data['error']})"
         final_error_msg = f"Email Generation/Validation Pipeline Error: {e}{prep_error_info}"
         # Return None for email, and error info in validation dict
         return None, {"error": final_error_msg, "ats_score": None, "detailed_checks": {}, "overall_feedback": final_error_msg}
@@ -1950,9 +1950,9 @@ async def _validate_ats_friendliness(
         logging.warning("No document text provided for ATS validation.")
         return {"error": "No document text provided for validation.", "ats_score": None, "detailed_checks": {}, "overall_feedback": "No document text."}
     if not isinstance(job_description_data, dict):
-         logging.warning(f"Invalid job_description_data type ({type(job_description_data)}) for ATS validation.")
-         # Proceed with validation but keyword checks will be limited
-         job_description_data = {} # Use empty dict to avoid errors downstream
+        logging.warning(f"Invalid job_description_data type ({type(job_description_data)}) for ATS validation.")
+        # Proceed with validation but keyword checks will be limited
+        job_description_data = {} # Use empty dict to avoid errors downstream
 
 
     # Initialize results structure
@@ -1980,7 +1980,7 @@ async def _validate_ats_friendliness(
             # Join valid string representations of keywords
             jd_keywords_str = ", ".join(filter(None, map(str, jd_keywords_list)))
         elif isinstance(jd_keywords_list, list): # It's a list, but empty
-             jd_keywords_str = "N/A (No requirements listed in JD data)"
+            jd_keywords_str = "N/A (No requirements listed in JD data)"
 
         jd_title = job_description_data.get("job_title", "N/A")
 
@@ -2030,16 +2030,16 @@ async def _validate_ats_friendliness(
         Return ONLY a valid JSON object containing the following keys. Provide honest, critical assessments based *only* on the text provided and general ATS/recruiting best practices. Use the rating scales suggested in the detailed checks.
 
         1.  `ats_score` (integer, 1-5): Your overall assessment of the document's ATS compatibility (1=Very Poor, 3=Fair, 5=Excellent). Consider structure, formatting, keyword potential, and parseability.
-        2.  `keyword_check` (object): Analyze keyword relevance against the JD context provided above. {{
+        2.  `keyword_check` (object): Analyze keyword relevance against the JD context provided above. {{{{
                 "found_keywords": [List of ~10-15 relevant keyword strings (lowercase) likely matching the JD context found IN THE DOCUMENT],
                 "missing_suggestions": [List of ~5-10 important keywords from the JD context that seem ABSENT or underrepresented in the document],
                 "density_impression": "string (Your qualitative impression, e.g., 'Good keyword density and natural integration', 'Keywords seem sparse', 'Keywords heavily concentrated in one section', 'Potential keyword stuffing')"
-            }}
+            }}}}
         3.  `clarity_structure_check` (string): Assess the overall clarity, organization, and logical flow for both ATS parsing and human readability (e.g., "Well-structured and easy to follow", "Moderately clear, some long paragraphs/sections", "Structure is confusing or illogical").
         4.  `formatting_check` (string): Evaluate the use of ATS-friendly formatting (standard fonts implied, standard bullets, consistent dates, no complex elements). (e.g., "Clean standard formatting", "Minor issues (e.g., inconsistent dates or non-standard bullets)", "Major issues likely (e.g., hints of tables, columns, unusual characters)").
-        5.  `detailed_checks` (object): Provide brief, specific ratings for the document based *only* on its text, addressing the points listed below. Use the suggested rating scales within the parentheses. {{
+        5.  `detailed_checks` (object): Provide brief, specific ratings for the document based *only* on its text, addressing the points listed below. Use the suggested rating scales within the parentheses. {{{{
                 {detailed_checks_instructions}
-            }}
+            }}}}
         6.  `overall_feedback` (string): Provide brief (2-3 sentences), actionable feedback summarizing the document's key strengths and weaknesses regarding its purpose (ATS compatibility, convincing a recruiter, etc.). Highlight the most critical areas for improvement.
 
         **JSON Output:**
@@ -2074,16 +2074,16 @@ async def _validate_ats_friendliness(
 
                 # Check all required keys are present
                 if not all(key in validation_data for key in required_keys):
-                     missing = [key for key in required_keys if key not in validation_data]
-                     raise ValueError(f"Validation response missing required keys: {missing}")
+                    missing = [key for key in required_keys if key not in validation_data]
+                    raise ValueError(f"Validation response missing required keys: {missing}")
 
                 # Validate ats_score
                 ats_score = validation_data.get("ats_score")
                 if isinstance(ats_score, int) and 1 <= ats_score <= 5:
                     results["ats_score"] = ats_score
                 else:
-                     logging.warning(f"Invalid ATS score received ({ats_score}). Setting to None.")
-                     results["ats_score"] = None
+                    logging.warning(f"Invalid ATS score received ({ats_score}). Setting to None.")
+                    results["ats_score"] = None
 
                 # Validate keyword_check structure and sanitize lists
                 kw_check = validation_data.get("keyword_check")
@@ -2097,8 +2097,8 @@ async def _validate_ats_friendliness(
                     ])))
                     results["keyword_check"]["density_impression"] = str(kw_check.get("density_impression", "N/A"))
                 else:
-                     logging.warning("Invalid keyword_check structure received.")
-                     # Keep default empty/N/A values in results["keyword_check"]
+                    logging.warning("Invalid keyword_check structure received.")
+                    # Keep default empty/N/A values in results["keyword_check"]
 
                 # Validate detailed_checks is a dict
                 dt_check = validation_data.get("detailed_checks")
@@ -2106,8 +2106,8 @@ async def _validate_ats_friendliness(
                     # Basic check: ensure values are strings or simple types if populated
                     results["detailed_checks"] = {k: str(v) for k, v in dt_check.items()}
                 else:
-                     logging.warning("Invalid detailed_checks structure received.")
-                     results["detailed_checks"] = {} # Keep default empty dict
+                    logging.warning("Invalid detailed_checks structure received.")
+                    results["detailed_checks"] = {} # Keep default empty dict
 
                 # Validate other fields are strings
                 results["clarity_structure_check"] = str(validation_data.get("clarity_structure_check", "N/A"))
@@ -2134,10 +2134,10 @@ async def _validate_ats_friendliness(
                 results["detailed_checks"] = {}
                 results["overall_feedback"] = "Validation processing error."
         else:
-             # Handle case where LLM call did not return a string
-             logging.error(f"Unexpected return type from _call_llm_async for ATS validation: {type(response_text)}")
-             results["error"] = "Error: LLM call for ATS validation did not return text."
-             results["overall_feedback"] = "Validation LLM call failed."
+            # Handle case where LLM call did not return a string
+            logging.error(f"Unexpected return type from _call_llm_async for ATS validation: {type(response_text)}")
+            results["error"] = "Error: LLM call for ATS validation did not return text."
+            results["overall_feedback"] = "Validation LLM call failed."
 
     # --- Handle Outer LLM Call Errors ---
     except Exception as e:
