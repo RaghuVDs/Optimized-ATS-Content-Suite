@@ -1,99 +1,103 @@
-Raghuveera Narasimha
-+1(680)356-8722 |raghunaras97@gmail.com | www.linkedin.com/in/raghunaras97/ 
+# Raghuveera Narasimha
++1(680)356-8722 | raghunaras97@gmail.com | www.linkedin.com/in/raghunaras97/
 
+**Data Engineer & Analyst | Azure, PySpark, SQL, ML | 3 YOE | MS Applied Data Science**
 
-Summary
+## Summary
+Data Engineer with 3 years of experience in FinTech, specializing in Azure-based data solutions (ADLS Gen2, Databricks, ADF), PySpark ETL optimization (1TB+ daily data, 6-hour processing reduction), and ML model development (25% fraud detection uplift). Proven ability in data governance (Unity Catalog), BI (Tableau, Metabase), and driving data-driven decisions. MS in Applied Data Science candidate at Syracuse University.
 
-Data professional with expertise in data engineering, business intelligence, and machine learning. Proven ability to design and implement end-to-end data solutions (Azure), develop and optimize ETL pipelines (ADF, Databricks, Airflow), create impactful visualizations (Tableau, Metabase), and apply ML techniques to solve business problems. Experience in the FinTech industry, focused on improving data quality and supporting data-driven decision-making.
+## Work Experience
 
-Work Experience
+**Data Analyst, Fintech, Open Financial Technology Pvt. Ltd, Bengaluru, Karnataka, India** (Mar 2022 - Aug 2023)
+* Designed and implemented a Delta Lake on Azure Data Lake Storage (ADLS Gen2) for 1TB+ daily payments data, enabling ACID transactions, schema enforcement, and time-travel capabilities.
+* Engineered and optimized PySpark ETL pipelines on Azure Databricks, processing 1TB+ daily transaction data and reducing processing time by 6 hours for near real-time analytics.
+* Reduced query runtime by 15% and enhanced ETL efficiency by applying Z-ordering and utilizing Delta Lake features like auto-optimize and compaction.
+* Improved data discovery and governance by implementing role-based access control for 8+ teams using Unity Catalog on Azure.
+* Automated Delta Lake updates and ETL workflows using Apache Airflow, reducing manual intervention by 40%.
+* Improved query performance by 20% by syncing curated Delta Lake datasets to Snowflake and optimizing materialized views and star schemas within a hybrid data architecture.
+* Streamlined data access and analytics by creating and managing key Snowflake database objects (tables, views, materialized views, sequences, stored procedures).
+* Ensured high accuracy for critical financial data and reduced manual validation efforts by implementing robust PySpark-based data quality checks on Azure Databricks.
+* Reduced query time by up to 30% for reporting and analysis by optimizing database performance through indexing and partitioning large datasets.
+* Contributed to implementing a secure, scalable data lake on ADLS Gen2, ensuring compliance with industry regulations.
+* Increased fraud detection accuracy by 25% and streamlined lending decisions by up to 80% by developing a Random Forest Classifier in PySpark analyzing payment history and credit scores.
+* Improved revenue prediction accuracy by 15% and enabled proactive pricing adjustments by building an ARIMA time-series forecasting model integrated into Tableau dashboards.
+* Boosted customer engagement by 43% by identifying 5 high-value customer segments using K-Means clustering on transaction data, enabling personalized marketing strategies.
+* Drove product improvements by automating the analysis of product reviews using Python, NLP (Gemini, Hugging Face, Sentence Transformers), and K-Means clustering, visualizing trends with Plotly.
+* Increased loan approvals by 38% and decreased bad debt by 21% by building an ML regression model for credit card enhancement.
+* Designed and maintained 50+ interactive Tableau and Metabase dashboards with LOD calculations, parameter-driven filters, and complex joins, visualizing KPIs (CAC, GTV, Churn) to meet dynamic business needs.
+* Ensured GDPR compliance and data privacy by implementing row-level security in Tableau across 8+ user groups.
+* Improved query performance by an average of 15% and enhanced report efficiency by authoring and optimizing complex SQL queries for data extraction.
+* Contributed to a ~12% uplift in key campaign metrics by analyzing marketing campaign performance and delivering data-informed improvement insights.
+* Reduced critical data errors by ~17% by defining and implementing data quality controls for batch/real-time data and partnering with tech teams on validation frameworks.
+* Saved ~7.5 hours of manual data preparation time weekly by automating data collation, extraction, and preparation from diverse sources using Python.
+* Ensured application stability and data accuracy through rigorous unit/end-to-end testing and continuous operational support.
+* Translated business requirements from diverse stakeholders (Product, Marketing, Tech) into analytical solutions, ensuring data integrity and project alignment.
+* Reduced signup and KYC process drop-offs from 35% to 25% and increased conversion rates through funnel analysis, A/B testing, and workflow optimizations.
+* Increased app engagement by up to 2x by analyzing behavior of 250,000+ monthly active users with SQL and Python.
+* Uncovered key insights into customer churn and renewal rates by leveraging SQL to analyze over 100M data points.
+* Drove customer retention, reducing drop-offs by 25% and improving satisfaction scores by optimizing workflows via A/B testing.
+* Reduced manual reporting efforts by 15 hours weekly by developing Python scripts to automate KPI reports.
+* Improved data accessibility and decision-making by partnering with product/business teams to align ETL pipelines and reporting with strategic KPIs.
+* Enhanced database query efficiency by 20% through advanced SQL techniques and optimization.
+* Boosted sales efficiency by 10-18% through targeted SQL and Python analyses supporting revenue growth.
+* Reduced onboarding fraud risk by 2% by implementing a real-time Metabase alert system for suspicious merchant IP addresses.
+* Improved accuracy and reduced manual effort in merchant billing by automating processes with Python.
 
-Data Analyst, Fintech, Open Financial Technology Pvt. Ltd, Bengaluru, Karnataka, India                                           	    Mar 22 - Aug 23   
-Designed and implemented a Delta Lake on Azure Data Lake Storage (ADLS Gen2) for 1TB+ daily payments data, enabling ACID transactions, schema enforcement, and time-travel capabilities.
-Engineered and optimized PySpark ETL pipelines on Azure Databricks, processing 1TB+ daily transaction data and reducing processing time by 6 hours for near real-time analytics.
-Applied Z-ordering and utilized Delta Lake features like auto-optimize and compaction to reduce query runtime by 15% and enhance ETL efficiency.
-Utilized Unity Catalog on Azure for centralized data governance, implementing role-based access control for 8+ teams and improving data discovery.
-Orchestrated complex data pipelines using Apache Airflow, automating Delta Lake updates and ETL workflows, reducing manual intervention by 40%.
-Maintained a hybrid data architecture by syncing curated Delta Lake datasets to Snowflake, optimizing materialized views and star schemas to improve query performance by 20%.
-Created and managed Snowflake database objects including tables, views, materialized views, sequences, and stored procedures.
-Implemented robust PySpark-based data quality checks on Azure Databricks, ensuring high accuracy for critical financial data and reducing manual validation efforts.
-Optimized database performance by creating indexes and partitioning large datasets, reducing query time by up to 30% for reporting and analysis.
-Contributed to the implementation of a secure and scalable data lake on ADLS Gen2, ensuring compliance with industry regulations.
-Developed a Random Forest Classifier in PySpark to analyze payment history and credit scores, increasing fraud detection accuracy by 25% and streamlining lending decisions by up to 80%.
-Built an ARIMA time-series forecasting model, integrating it into Tableau dashboards, which improved revenue prediction accuracy by 15% and enabled proactive pricing adjustments.
-Identified 5 high-value customer segments using K-Means clustering on transaction data, enabling personalized marketing strategies that boosted engagement by 43%.
-Automated the analysis of product reviews using Python, NLP (Gemini, Hugging Face, Sentence Transformers), and K-Means clustering, visualizing trends with Plotly to drive product improvements.
-Built a machine learning regression model for credit card enhancement, increasing loan approvals by 38% and decreasing bad debt by 21%.
-Designed and maintained 50+ interactive dashboards in Tableau and Metabase, utilizing LOD calculations, parameter-driven filters, complex joins, and visualizing KPIs (CAC, GTV, Churn) to meet dynamic business needs.
-Implemented row-level security in Tableau across 8+ user groups, ensuring GDPR compliance and data privacy.
-Authored complex SQL queries for data extraction based on business needs; significantly improved query performance by an average of 15% and enhanced report efficiency through debugging and optimization techniques.
-Analyzed marketing campaign performance, delivering regular reports and leveraging insights to drive data-informed improvements, contributing to a ~12% uplift in key campaign metrics.
-Defined and implemented data quality controls for batch and real-time data, partnering with technology teams to build robust validation frameworks and reducing critical data errors by ~17%.
-Utilized Python to automate the collation, extraction, and preparation of data from diverse sources for analysis, saving approximately 7.5 hours of manual data preparation time per week.
-Ensured application stability and data accuracy through rigorous unit/end-to-end testing and continuous operational support.
-Collaborated with various stakeholders (Product, Marketing, Tech) to understand technical specifications, translate business requirements into analytical solutions, and ensure data integrity across projects.
-Performed funnel analysis to identify critical drop-offs in signup and KYC processes (initially 35%), leading to A/B testing and workflow optimizations that reduced attrition/drop-offs significantly (to 25%) and increased conversion rates.
-Analyzed customer behavior across 250,000+ monthly active users using SQL and Python, leading to initiatives that increased app engagement by up to 2x.
-Leveraged SQL to analyze over 100M data points, uncovering key insights into customer churn and renewal rates.
-Drove customer retention by optimizing workflows via A/B testing, reducing drop-offs by 25% and improving satisfaction scores.
-Developed Python scripts to automate weekly, monthly, and quarterly KPI reports, reducing manual reporting efforts by 15 hours weekly.
-Partnered with product and business teams to align ETL pipelines and reporting with strategic KPIs, improving data accessibility and decision-making.
-Enhanced database query efficiency by 20% through advanced SQL techniques and optimization.
-Boosted sales efficiency by 10-18% through targeted SQL and Python analyses supporting revenue growth.
-Implemented a real-time alert system in Metabase to flag suspicious merchant IP addresses, reducing onboarding fraud risk by 2%.
-Automated merchant billing processes using Python, improving accuracy and reducing manual effort.
+**Associate Data Analyst, XLDynamics Pvt. Ltd, Mysore, Karnataka, India** (Sept 2020 - Mar 2022)
+* Reduced report time and enhanced analytical productivity by streamlining loan processing and data cleansing for a U.S. mortgage company using advanced Excel, Power Query, and Power Pivot.
+* Improved decision-making speed and operational workflow efficiency by developing Power BI dashboards for loan management.
+* Fostered team efficiency and maintained high accuracy in reporting and loan review by leading knowledge transfer for new hires on standardized procedures.
 
+## Technical Skills & Tools
+* **Cloud & Data Engineering:** Python, PySpark, Azure (Data Factory, Databricks, Synapse, ADLS Gen2, Blob Storage), Apache Airflow, AWS (Glue, EMR, S3, Redshift, Kinesis, Lambda), Docker, Kubernetes, Git, GitHub Actions
+* **Data Analysis & BI:** SQL, Python, R, Pandas, NumPy, Tableau, Metabase, Power BI, Looker, Matplotlib, Seaborn, ggplot2, Excel (Advanced, Power Query, Power Pivot)
+* **Machine Learning:** Scikit-learn, PySpark MLlib, Keras, TensorFlow, Transformers (BERT, GPT), CNN, R-CNN, VGGNet, NLP (Gemini, Hugging Face, Sentence Transformers)
+* **Databases:** Snowflake, MySQL, PostgreSQL, MongoDB, Cassandra, Redis, Neo4j, SQL Server
+* **Other Tools:** Streamlit, Jira, Alteryx, Microsoft Office Suite
 
-Associate Data Analyst, XLDynamics Pvt. Ltd, Mysore, Karnataka, India                                                                     Sept 20 - Mar 22
-Streamlined loan processing and data cleansing to a U.S. mortgage company using advanced Excel functions (LOOKUPs, INDEX MATCH, XNPV), Power Query and Power Pivot  reducing report time and enhancing analytical productivity.
-Developed Power BI dashboards for loan management, improving decision-making speed and operational workflow efficiency.
-Led knowledge transfer for two new hires on standardized procedures, fostering team efficiency and maintaining high accuracy in daily reporting and loan review processes.
-
-Technical Skills & Tools
-
-Cloud & Data Engineering : Python, PySpark, Apache Airflow, AWS (Glue, EMR, S3, Redshift, Kinesis, Lambda), Azure (Data Factory, Databricks, Synapse, ADLS Gen2, Blob Storage), Docker, Kubernetes, Git, Git Actions
-Data Analysis & Business Intelligence: Python, R, SQL, Pandas, NumPy, Matplotlib, Seaborn, ggplot2, Looker
-Machine Learning & Deep Learning: Scikit-learn, Keras, CNN, R-CNN, VGGNet, BERT, GPT, Transformers
-Databases: MySQL,PostgreSQL, MongoDB, Cassandra, Redis, Neo4j
-Other Tools: Jira, Microsoft Office, Alteryx, 
-
-Projects
-
-**Advance Chest Disease Detection using R-CNN**
-Developed an AI-powered system using Faster R-CNN and the NIH ChestX-ray14 dataset to accurately identify and localize multiple chest diseases, including pneumonia and tuberculosis, from X-ray images.
-Demonstrated promising disease detection capabilities, highlighting AI's potential to assist medical professionals by enabling faster, more accurate diagnoses for improved patient care.
-
-**Airfare Prediction and Optimization with PySpark**
-Built and optimized a high-accuracy airfare prediction model (R-squared: 0.96) using PySpark and MLlib (GBTRegressor), involving rigorous data cleaning, TSQL data preparation, and advanced feature engineering.
-Delivered actionable, data-driven recommendations by creating interactive dashboards in Tableau and Power BI to visualize prediction insights and key price-influencing factors.
-
-**COVID-19 Data Pipeline and Analysis with Azure Data Factory**
-Engineered and automated complex ETL workflows using Azure Data Factory, Data Flows, and Databricks, significantly reducing manual data processing effort by 40% through parameterized triggers and dynamic variables.
-Implemented robust data integration pipelines from diverse sources (FTP, APIs) into Azure Data Lake Storage (ADLS Gen2), improving data reliability by 30% and streamlining deployments with Azure DevOps CI/CD.
-
-**Dana: The Interactive Data Assistant**
-Designed and developed "Dana," an interactive AI assistant that democratizes data analysis by translating natural language user queries into executable SQL commands for database interaction and file analysis.
-Integrated Large Language Models (LLMs like Google Gemini) to generate data-driven answers, summaries, automated visualizations (e.g., summary statistics, correlations), and insights within a conversational Streamlit interface.
-
-**E-commerce Analytics**
-Led the end-to-end development of a relational e-commerce database using SQL Server, including conceptual/logical modeling and implementing data integrity with constraints, triggers, and stored procedures.
-Enhanced data retrieval and transactional processing efficiency in a high-traffic environment through advanced indexing strategies and deployed Power BI dashboards for comprehensive business intelligence analytics.
-
-**Energy Consumption Analysis Using regression model**
-Conducted comprehensive analysis of a large-scale energy dataset (4.2 million rows, 200 columns) using R, performing data merging, cleaning, custom transformations, and extensive EDA with ggplot2.
-Developed a linear regression model achieving 79.8% R-squared for accurate energy consumption prediction and utilized Bayesian regression and ANOVA to identify key drivers, informing energy efficiency strategies.
+## Projects
 
 **Hyper-Optimized ATS Suite Generator**
-Developed an asynchronous-first ATS optimization suite (Python/Streamlit) leveraging concurrent Google Gemini API calls (gemini-1.5-pro, gemini-2.5-pro-exp) and engineered a multi-turn, self-refining LLM workflow (Draft -> Critique -> Refine) for iterative resume/cover letter quality improvement.
-Implemented robust structured JSON data extraction from LLMs with Python validation, an LLM-based ATS evaluator for objective scoring, and LLM-powered relevance ranking to automatically prioritize resume content against job descriptions.
+* Improved resume/cover letter quality through an asynchronous Python/Streamlit ATS optimization suite using concurrent Google Gemini API calls and a multi-turn, self-refining LLM workflow (Draft -> Critique -> Refine).
+* Enabled objective resume scoring and automatic content prioritization against job descriptions by implementing robust JSON data extraction from LLMs, an LLM-based ATS evaluator, and LLM-powered relevance ranking.
 
-**Music2Movie: Personalized Recommendation System from Sound to Screen**
-Developed "Music2Movie," a novel cross-domain recommendation system suggesting top-5 movies based on mood derived from Spotify song audio features, integrating and processing multimodal data from Spotify and TMDb.
-Engineered feature extraction pipelines for audio, visual (poster embeddings), and text (sentiment analysis) data, implementing cosine similarity on cross-domain embeddings to generate personalized, music-driven film recommendations via a Streamlit interface.
+**Dana: The Interactive Data Assistant**
+* Democratized data analysis by designing "Dana," an AI assistant translating natural language queries into executable SQL commands for database/file analysis using LLMs (Google Gemini) and Streamlit.
+* Generated data-driven answers, summaries, automated visualizations, and insights within a conversational interface.
 
-Education
+**Data Analyst Work @ Open Financial Technology (Selected Project Highlights from Role)**
+* **Fraud Detection System:** Increased fraud detection accuracy by 25% and streamlined lending decisions by 80% with a PySpark Random Forest Classifier.
+* **Revenue Forecasting Model:** Improved revenue prediction accuracy by 15% using an ARIMA model integrated with Tableau.
+* **Customer Segmentation:** Boosted engagement by 43% via K-Means clustering to identify 5 high-value customer segments for personalized marketing.
 
-SYRACUSE UNIVERSITY, NY, USA – M.S. in Applied Data Science, GPA: 3.8                                                Aug 2023 - May 2025
-VTU, NIE SOUTH, Mysore, India – B.E. in Electrical and Electronics Engineering                                            Jul 2016 - Aug 2020
+**Airfare Prediction and Optimization with PySpark**
+* Achieved 96% R-squared accuracy in airfare prediction using PySpark MLlib (GBTRegressor) with rigorous data cleaning and feature engineering.
+* Delivered actionable recommendations by creating interactive Tableau/Power BI dashboards to visualize prediction insights.
 
-Certifications: Azure Data Fundamentals, Azure Data Engineer, IBM Data Science, Tableau Desktop Specialist
+**COVID-19 Data Pipeline and Analysis with Azure Data Factory**
+* Reduced manual data processing by 40% by engineering automated ETL workflows (Azure Data Factory, Data Flows, Databricks) with parameterized triggers.
+* Improved data reliability by 30% by implementing robust data integration pipelines from diverse sources (FTP, APIs) into ADLS Gen2, streamlining deployments with Azure DevOps CI/CD.
+
+**E-commerce Analytics**
+* Ensured data integrity and efficient transaction processing in a high-traffic e-commerce environment by developing a relational SQL Server database with robust modeling and procedures.
+* Enhanced data retrieval efficiency via advanced indexing and deployed Power BI dashboards for BI analytics.
+
+**Energy Consumption Analysis Using Linear Regression Model**
+* Derived actionable insights from a 4.2M row energy dataset using R for comprehensive EDA, informing a linear regression model (79.8% R-squared) for consumption prediction.
+* Identified key energy consumption drivers using Bayesian regression and ANOVA to inform efficiency strategies.
+
+**Music2Movie: Personalized Recommendation System**
+* Developed a novel cross-domain system recommending top-5 movies based on mood from Spotify song audio features, integrating Spotify and TMDb data.
+* Generated personalized, music-driven film recommendations via a Streamlit interface using feature extraction (audio, visual, text) and cosine similarity.
+
+**Advance Chest Disease Detection using R-CNN**
+* Developed an AI system using Faster R-CNN (NIH ChestX-ray14 dataset) to accurately identify and localize multiple chest diseases from X-rays.
+* Demonstrated AI's potential to assist medical professionals by enabling faster, more accurate diagnoses.
+
+
+## Education
+**SYRACUSE UNIVERSITY, NY, USA** – M.S. in Applied Data Science, GPA: 3.8 (Aug 2023 - May 2025)
+**VTU, NIE SOUTH, Mysore, India** – B.E. in Electrical and Electronics Engineering (Jul 2016 - Aug 2020)
+
+## Certifications
+Azure Data Fundamentals, Azure Data Engineer, IBM Data Science, Tableau Desktop Specialist
