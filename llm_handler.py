@@ -1168,7 +1168,7 @@ async def generate_application_text_streamed(
 
             yield "\n--- Generation stopped due to missing critical JD data. ---\n"
             return # Stop generation
-        
+
         combined_reqs = common_data.get("combined_jd_requirements", [])
 
         # --- Verify Essential Resume Data Pieces (Optional Warning) ---
@@ -1197,7 +1197,7 @@ async def generate_application_text_streamed(
             # --- Select Top Bullets (from Achievements) ---
             if resume_achievements and combined_reqs:
                 achievement_strings = []
-            
+
                 for ach in resume_achievements:
                     verb = ach.get('action_verb', 'Processed') # Default verb if missing
                     result_text = ach.get('quantifiable_result')
@@ -1884,7 +1884,7 @@ async def generate_email_and_validate(
         {{candidate_links_formatted}}
         {email}
         """
-        
+
         # --- 4. Generate Email ---
         logging.info("Email Gen: Calling LLM to generate email...")
         generated_email_result = await _call_llm_async(
